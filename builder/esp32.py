@@ -408,6 +408,10 @@ def parse_args(extra_args, lv_cflags, brd):
         extra_args = esp32_s2_args(extra_args)
     elif board == 'ESP32_GENERIC_S3':
         extra_args = esp32_s3_args(extra_args)
+    elif board == 'UM_FEATHERS3':
+        extra_args = esp32_s3_args(extra_args)
+    elif board == 'T-HMI':
+        extra_args = esp32_s3_args(extra_args)
     elif board == 'ESP32_GENERIC_C3':
         extra_args = esp32_c3_args(extra_args)
     elif board == 'LOLIN_S2_MINI':

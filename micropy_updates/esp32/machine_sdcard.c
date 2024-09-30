@@ -39,6 +39,11 @@
 #include "esp_log.h"
 #include "driver/spi_master.h"
 
+#define DEBUG 1
+#if DEBUG
+#define DEBUG_printf(fmt, ...) mp_printf(&mp_plat_print, fmt "\n", ##__VA_ARGS__)
+#endif
+
 //
 // There are three layers of abstraction: host, slot and card.
 // Creating an SD Card object will initialise the host and slot.
@@ -226,7 +231,13 @@ static mp_obj_t machine_sdcard_make_new(const mp_obj_type_t *type, size_t n_args
         machine_hw_spi_bus_add_device(&self->spi_device);
     } else {
         // SD/MMC interface
+#if defined(MICROPY_HW_SDMMC_SLOT_CONFIG)
+        sdmmc_slot_config_t slot_config = MICROPY_HW_SDMMC_SLOT_CONFIG();
+        DEBUG_printf("my sdmmc used");
+#else
         sdmmc_slot_config_t slot_config = SDMMC_SLOT_CONFIG_DEFAULT();
+        DEBUG_printf("default sdmmc used");
+#endif // MICROPY_HW_SDMMC_SLOT_CONFIG
 
         // Stronger external pull-ups are still needed but apparently
         // it is a good idea to set the internal pull-ups anyway.
