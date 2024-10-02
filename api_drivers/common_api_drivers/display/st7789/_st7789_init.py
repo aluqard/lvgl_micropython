@@ -86,13 +86,14 @@ def init(self):
     param_buf[0] = 0x28
     self.set_params(_VCOMS, param_mv[:1])
 
-    param_buf[0] = 0x0C
+    param_buf[0] = 0x2C
     self.set_params(_LCMCTRL, param_mv[:1])
 
     param_buf[0] = 0x01
-    self.set_params(_VDVVRHEN, param_mv[:1])
+    param_buf[1] = 0xFF
+    self.set_params(_VDVVRHEN, param_mv[:2])
 
-    param_buf[0] = 0x13
+    param_buf[0] = 0x10
     self.set_params(_VRHS, param_mv[:1])
 
     param_buf[0] = 0x20
