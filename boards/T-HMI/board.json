@@ -1,0 +1,25 @@
+{
+    "deploy": [
+        "../deploy_s3.md"
+    ],
+    "docs": "",
+    "features": [
+        "BLE",
+	"Display",
+        "Battery Charging",
+        "External Flash",
+        "External RAM",
+        "RGB LED",
+        "SDCard",
+        "USB-C",
+        "WiFi"
+    ],
+    "images": [
+        "generic_s3.jpg"
+    ],
+    "mcu": "esp32s3",
+    "product": "LILYGO T-HMI",
+    "thumbnail": "",
+    "url": "http://www.lilygo.cn/prod_view.aspx?TypeId=50060&Id=1270&FId=t3:50060:3",
+    "vendor": "LILYGO"
+}
