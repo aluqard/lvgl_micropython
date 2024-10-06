@@ -4,7 +4,7 @@ import sys
 from argparse import ArgumentParser
 from . import spawn
 from . import generate_manifest
-from . import update_mphalport
+from . import update_mphalport as _update_mphalport
 
 
 IDF_VER = '5.2.0'
@@ -162,6 +162,7 @@ optimize_size = False
 ota = False
 
 dual_core_threads = False
+task_stack_size = 16 * 1024
 
 
 def common_args(extra_args):
@@ -177,6 +178,7 @@ def common_args(extra_args):
     global optimize_size
     global ota
     global dual_core_threads
+    global task_stack_size
 
     if board == 'ARDUINO_NANO_ESP32':
         raise RuntimeError('Board is not currently supported')
@@ -269,6 +271,14 @@ def common_args(extra_args):
         action='store_true'
     )
 
+    esp_argParser.add_argument(
+        '--task-stack-size',
+        dest='task_stack_size',
+        default=task_stack_size,
+        type=int,
+        action='store'
+    )
+
     esp_args, extra_args = esp_argParser.parse_known_args(extra_args)
 
     BAUD = esp_args.baud
@@ -282,6 +292,7 @@ def common_args(extra_args):
     optimize_size = esp_args.optimize_size
     ota = esp_args.ota
     dual_core_threads = esp_args.dual_core_threads
+    task_stack_size = esp_args.task_stack_size
 
     return extra_args
 
@@ -512,10 +523,13 @@ def has_correct_idf():
     )
 
 
+set_displays = []
+
+
 def build_manifest(
     target, script_dir, lvgl_api, displays, indevs, frozen_manifest
 ):
-    update_mphalport(target)
+    _update_mphalport(target)
 
     with open(f'lib/micropython/ports/esp32/boards/sdkconfig.base', 'r') as f:
         sdkconfig_base = f.read()
@@ -531,11 +545,11 @@ def build_manifest(
 
     manifest_path = 'lib/micropython/ports/esp32/boards/manifest.py'
 
-    generate_manifest(
+    set_displays.extend(generate_manifest(
         script_dir, lvgl_api, manifest_path,
         displays, indevs, frozen_manifest,
         f'{script_dir}/api_drivers/common_api_drivers/frozen/other/spi3wire.py'
-    )
+    ))
 
 
 def force_clean(clean_mpy_cross):
@@ -774,73 +788,8 @@ def submodules():
         return_code, _ = spawn(cmds, env=env)
         if return_code != 0:
             sys.exit(return_code)
-
-
-MPTHREADPORT_PATH = 'lib/micropython/ports/esp32/mpthreadport.c'
-MPCONFIGPORT_PATH = 'lib/micropython/ports/esp32/mpconfigport.h'
-PANICHANDLER_PATH = 'lib/micropython/ports/esp32/panichandler.c'
-SDKCONFIG_PATH = f'build/sdkconfig.board'
-MPHALPORT_PATH = 'lib/micropython/ports/esp32/mphalport.c'
-MAIN_PATH = 'lib/micropython/ports/esp32/main.c'
-
-
-def set_thread_core():
-    with open(MPTHREADPORT_PATH, 'rb') as f:
-        data = f.read().decode('utf-8')
-
-    if '_CORE_ID' not in data:
-        data = data.replace('MP_TASK_COREID', '_CORE_ID')
-
-        new_data = [
-            '#if MICROPY_PY_THREAD',
-            '',
-            '#if (MP_USE_DUAL_CORE && !CONFIG_FREERTOS_UNICORE)',
-            '    #define _CORE_ID    tskNO_AFFINITY',
-            '#else',
-            '    #define _CORE_ID    MP_TASK_COREID',
-            '#endif',
-            ''
-        ]
-
-        data = data.replace('#if MICROPY_PY_THREAD', '\n'.join(new_data), 1)
-
-        with open(MPTHREADPORT_PATH, 'wb') as f:
-            f.write(data.encode('utf-8'))
-
-    with open(MPCONFIGPORT_PATH, 'rb') as f:
-        data = f.read().decode('utf-8')
-
-    for i in range(2):
-        pattern = f'#define MP_USE_DUAL_CORE                    ({i})'
-        if pattern in data:
-            text = (
-                f'#define MP_USE_DUAL_CORE                    '
-                f'({int(dual_core_threads)})'
-            )
-            break
-    else:
-        pattern = '#define MICROPY_PY_THREAD_GIL'
-        text = (
-            f'#define MP_USE_DUAL_CORE                    '
-            f'({int(dual_core_threads)})\n{pattern}'
-        )
-
-    data = data.replace(pattern, text)
-    text = (
-        f'#define MICROPY_PY_THREAD_GIL               '
-        f'({int(not dual_core_threads)})'
-    )
-    for i in range(2):
-        pattern = f'#define MICROPY_PY_THREAD_GIL               ({i})'
-
-        if pattern in data:
-            data = data.replace(pattern, text)
-            break
-
-    with open(MPCONFIGPORT_PATH, 'wb') as f:
-        f.write(data.encode('utf-8'))
-
-
+            
+            
 def find_esp32_ports(chip):
     from esptool.targets import CHIP_DEFS  # NOQA
     from esptool.util import FatalError  # NOQA
@@ -877,9 +826,50 @@ def find_esp32_ports(chip):
     return found_ports
 
 
-def update_panic_handler():
-    with open(PANICHANDLER_PATH, 'rb') as f:
+MPTHREADPORT_PATH = 'lib/micropython/ports/esp32/mpthreadport.c'
+MPCONFIGPORT_PATH = 'lib/micropython/ports/esp32/mpconfigport.h'
+PANICHANDLER_PATH = 'lib/micropython/ports/esp32/panichandler.c'
+SDKCONFIG_PATH = f'build/sdkconfig.board'
+MPHALPORT_PATH = 'lib/micropython/ports/esp32/mphalport.c'
+MAIN_PATH = 'lib/micropython/ports/esp32/main.c'
+
+
+def write_file(file, data):
+    with open(file, 'wb') as f:
+        f.write(data.encode('utf-8'))
+
+
+def read_file(file):
+    with open(file, 'rb') as f:
         data = f.read().decode('utf-8')
+
+    return data
+
+
+def update_mpthreadport():
+    data = read_file(MPTHREADPORT_PATH)
+
+    if '_CORE_ID' not in data:
+        data = data.replace('MP_TASK_COREID', '_CORE_ID')
+
+        new_data = [
+            '#if MICROPY_PY_THREAD',
+            '',
+            '#if (MP_USE_DUAL_CORE && !CONFIG_FREERTOS_UNICORE)',
+            '    #define _CORE_ID    tskNO_AFFINITY',
+            '#else',
+            '    #define _CORE_ID    MP_TASK_COREID',
+            '#endif',
+            ''
+        ]
+
+        data = data.replace('#if MICROPY_PY_THREAD', '\n'.join(new_data), 1)
+
+        write_file(MPTHREADPORT_PATH, data)
+
+
+def update_panic_handler():
+    data = read_file(PANICHANDLER_PATH)
 
     if '"MPY version : "' in data:
         beg, end = data.split('"MPY version : "', 1)
@@ -889,8 +879,7 @@ def update_panic_handler():
             f'MICROPY_BUILD_DATE MICROPY_BUILD_TYPE_PAREN "\\r\\n"{end}'
         )
 
-        with open(PANICHANDLER_PATH, 'wb') as f:
-            f.write(data.encode('utf-8'))
+        write_file(PANICHANDLER_PATH, data)
 
 
 def update_mpconfigboard():
@@ -899,8 +888,7 @@ def update_mpconfigboard():
         f'{board}/mpconfigboard.cmake'
     )
 
-    with open(mpconfigboard_cmake_path, 'rb') as f:
-        data = f.read().decode('utf-8')
+    data = read_file(mpconfigboard_cmake_path)
 
     sdkconfig = (
         'set(SDKCONFIG_DEFAULTS ${SDKCONFIG_DEFAULTS} '
@@ -910,106 +898,23 @@ def update_mpconfigboard():
     if sdkconfig not in data:
         data += '\n' + sdkconfig + '\n'
 
-        with open(mpconfigboard_cmake_path, 'wb') as f:
-            f.write(data.encode('utf-8'))
+        write_file(mpconfigboard_cmake_path, data)
 
 
-def build_sdkconfig(*args):
-    base_config = [
-        'CONFIG_ESPTOOLPY_AFTER_NORESET=y',
-        'CONFIG_PARTITION_TABLE_CUSTOM=y',
-        'CONFIG_ESPTOOLPY_FLASHSIZE_2MB=n',
-        'CONFIG_ESPTOOLPY_FLASHSIZE_4MB=n',
-        'CONFIG_ESPTOOLPY_FLASHSIZE_8MB=n',
-        'CONFIG_ESPTOOLPY_FLASHSIZE_16MB=n',
-        'CONFIG_ESPTOOLPY_FLASHSIZE_32MB=n',
-        'CONFIG_ESPTOOLPY_FLASHSIZE_64MB=n',
-        'CONFIG_ESPTOOLPY_FLASHSIZE_128MB=n',
-        'CONFIG_COMPILER_OPTIMIZATION_SIZE=n',
-        'CONFIG_COMPILER_OPTIMIZATION_PERF=n',
-        'CONFIG_COMPILER_OPTIMIZATION_CHECKS_SILENT=y'
-    ]
+def update_mpconfigport():
+    data = read_file(MPCONFIGPORT_PATH)
 
-    if DEBUG:
-        base_config.extend(
-            [
-                'CONFIG_BOOTLOADER_LOG_LEVEL_NONE=n',
-                'CONFIG_BOOTLOADER_LOG_LEVEL_ERROR=n',
-                'CONFIG_BOOTLOADER_LOG_LEVEL_WARN=n',
-                'CONFIG_BOOTLOADER_LOG_LEVEL_INFO=n',
-                'CONFIG_BOOTLOADER_LOG_LEVEL_DEBUG=y',
-                'CONFIG_BOOTLOADER_LOG_LEVEL_VERBOSE=n',
-                'CONFIG_LCD_ENABLE_DEBUG_LOG=y',
-                'CONFIG_HAL_LOG_LEVEL_NONE=n',
-                'CONFIG_HAL_LOG_LEVEL_ERROR=n',
-                'CONFIG_HAL_LOG_LEVEL_WARN=n',
-                'CONFIG_HAL_LOG_LEVEL_INFO=n',
-                'CONFIG_HAL_LOG_LEVEL_DEBUG=y',
-                'CONFIG_HAL_LOG_LEVEL_VERBOSE=n',
-                'CONFIG_LOG_MAXIMUM_LEVEL_ERROR=n',
-                'CONFIG_LOG_MAXIMUM_LEVEL_WARN=n',
-                'CONFIG_LOG_MAXIMUM_LEVEL_INFO=n',
-                'CONFIG_LOG_MAXIMUM_LEVEL_DEBUG=y',
-                'CONFIG_LOG_MAXIMUM_LEVEL_VERBOSE=n',
-                'CONFIG_LOG_DEFAULT_LEVEL_NONE=n',
-                'CONFIG_LOG_DEFAULT_LEVEL_ERROR=n',
-                'CONFIG_LOG_DEFAULT_LEVEL_WARN=n',
-                'CONFIG_LOG_DEFAULT_LEVEL_INFO=n',
-                'CONFIG_LOG_DEFAULT_LEVEL_DEBUG=y',
-                'CONFIG_LOG_DEFAULT_LEVEL_VERBOSE=n',
-            ]
-        )
+    if 'MP_USB_OTG' in data:
+        data = data.rsplit('\n\n#define MP_USB_OTG', 1)[0]
 
-    base_config.append('')
-    args = list(args)
-
-    for arg in args[:]:
-        if arg.startswith('CONFIG_'):
-            if 'ESPTOOLPY_FLASHMODE' in arg:
-                for itm in ('OPI', 'QIO', 'QOUT', 'DIO', 'DOUT'):
-                    base_config.append(f'CONFIG_ESPTOOLPY_FLASHMODE_{itm}=n')
-            elif 'ESPTOOLPY_FLASHFREQ' in arg:
-                for itm in (
-                    15, 16, 20, 24, 26, 30, 32, 40, 48, 60, 64, 80, 120
-                ):
-                    base_config.append(f'CONFIG_ESPTOOLPY__FLASHFREQ_{itm}M=n')
-            elif 'SPIRAM_SPEED' in arg:
-                for itm in (20, 26, 40, 80, 120):
-                    base_config.append(f'CONFIG_SPIRAM_SPEED_{itm}M=n')
-            elif 'FLASH_SAMPLE_MODE' in arg:
-                for itm in ('STR', 'DTR'):
-                    base_config.append(
-                        f'CONFIG_ESPTOOLPY_FLASH_SAMPLE_MODE_{itm}=n'
-                    )
-
-            base_config.append(arg)
-            args.remove(arg)
-
-    base_config.append(f'CONFIG_ESPTOOLPY_FLASHSIZE_{flash_size}MB=y')
-    base_config.append(
-        ''.join(
-            [
-                'CONFIG_PARTITION_TABLE_CUSTOM_FILENAME=',
-                f'"{SCRIPT_DIR}/build/partitions.csv"'
-            ]
-        )
+    data += (
+        '\n\n#define MP_USB_OTG'
+        f'  (SOC_USB_OTG_SUPPORTED && {str(usb_otg).lower()})\n'
     )
-
-    if optimize_size:
-        base_config.append('CONFIG_COMPILER_OPTIMIZATION_SIZE=y')
-    else:
-        base_config.append('CONFIG_COMPILER_OPTIMIZATION_PERF=y')
-
-    if oct_flash:
-        base_config.append('CONFIG_ESPTOOLPY_OCT_FLASH=y')
-
-    with open(SDKCONFIG_PATH, 'w') as f:
-        f.write('\n'.join(base_config))
-
-
-def update_isr():
-    with open(MPCONFIGPORT_PATH, 'rb') as f:
-        data = f.read().decode('utf-8')
+    data += (
+        '\n\n#define MP_USB_SERIAL_JTAG'
+        f'  (SOC_USB_SERIAL_JTAG_SUPPORTED && {str(usb_jtag).lower()})\n'
+    )
 
     pattern = (
         '#if !(CONFIG_IDF_TARGET_ESP32 && CONFIG_SPIRAM && '
@@ -1043,44 +948,165 @@ def update_isr():
                       'IRAM_ATTR f\n'
         )
 
-        with open(MPCONFIGPORT_PATH, 'wb') as f:
-            f.write(data.encode('utf-8'))
-
-
-def update_for_usb():
-    for file in (MPHALPORT_PATH, MAIN_PATH):
-        with open(file, 'rb') as f:
-            data = f.read().decode('utf-8')
-
-        data = data.replace(
-            '#if CONFIG_ESP_CONSOLE_USB_SERIAL_JTAG',
-            '#if MP_USB_SERIAL_JTAG'
-        )
-        data = data.replace(
-            '#elif CONFIG_USB_OTG_SUPPORTED',
-            '#elif MP_USB_OTG'
+    for i in range(2):
+        pattern = f'#define MP_USE_DUAL_CORE                    ({i})'
+        if pattern in data:
+            text = (
+                f'#define MP_USE_DUAL_CORE                    '
+                f'({int(dual_core_threads)})'
+            )
+            break
+    else:
+        pattern = '#define MICROPY_PY_THREAD_GIL'
+        text = (
+            f'#define MP_USE_DUAL_CORE                    '
+            f'({int(dual_core_threads)})\n{pattern}'
         )
 
-        with open(file, 'wb') as f:
-            f.write(data.encode('utf-8'))
-
-    with open(MPCONFIGPORT_PATH, 'rb') as f:
-        data = f.read().decode('utf-8')
-
-    if 'MP_USB_OTG' in data:
-        data = data.rsplit('\n\n#define MP_USB_OTG', 1)[0]
-
-    data += (
-        '\n\n#define MP_USB_OTG'
-        f'  (SOC_USB_OTG_SUPPORTED && {str(usb_otg).lower()})\n'
+    data = data.replace(pattern, text)
+    text = (
+        f'#define MICROPY_PY_THREAD_GIL               '
+        f'({int(not dual_core_threads)})'
     )
-    data += (
-        '\n\n#define MP_USB_SERIAL_JTAG'
-        f'  (SOC_USB_SERIAL_JTAG_SUPPORTED && {str(usb_jtag).lower()})\n'
+    for i in range(2):
+        pattern = f'#define MICROPY_PY_THREAD_GIL               ({i})'
+
+        if pattern in data:
+            data = data.replace(pattern, text)
+            break
+
+    data = data.split('\n')
+    for i, line in enumerate(data):
+        if line.startswith('#define MICROPY_TASK_STACK_SIZE'):
+            data[i] = (
+                f'#define MICROPY_TASK_STACK_SIZE           ({task_stack_size})'
+            )
+            break
+    data = '\n'.join(data)
+
+    write_file(MPCONFIGPORT_PATH, data)
+
+
+def update_mphalport():
+    data = read_file(MPHALPORT_PATH)
+    data = data.replace(
+        '#if CONFIG_ESP_CONSOLE_USB_SERIAL_JTAG',
+        '#if MP_USB_SERIAL_JTAG'
+    )
+    data = data.replace(
+        '#elif CONFIG_USB_OTG_SUPPORTED',
+        '#elif MP_USB_OTG'
     )
 
-    with open(MPCONFIGPORT_PATH, 'wb') as f:
-        f.write(data.encode('utf-8'))
+    write_file(MPHALPORT_PATH, data)
+
+
+def update_main():
+    data = read_file(MAIN_PATH)
+    data = data.replace(
+        '#if CONFIG_ESP_CONSOLE_USB_SERIAL_JTAG',
+        '#if MP_USB_SERIAL_JTAG'
+    )
+    data = data.replace(
+        '#elif CONFIG_USB_OTG_SUPPORTED',
+        '#elif MP_USB_OTG'
+    )
+
+    write_file(MAIN_PATH, data)
+
+
+def build_sdkconfig(*args):
+    base_config = [
+        'CONFIG_ESPTOOLPY_AFTER_NORESET=y',
+        'CONFIG_PARTITION_TABLE_CUSTOM=y',
+        'CONFIG_ESPTOOLPY_FLASHSIZE_2MB=n',
+        'CONFIG_ESPTOOLPY_FLASHSIZE_4MB=n',
+        'CONFIG_ESPTOOLPY_FLASHSIZE_8MB=n',
+        'CONFIG_ESPTOOLPY_FLASHSIZE_16MB=n',
+        'CONFIG_ESPTOOLPY_FLASHSIZE_32MB=n',
+        'CONFIG_ESPTOOLPY_FLASHSIZE_64MB=n',
+        'CONFIG_ESPTOOLPY_FLASHSIZE_128MB=n',
+        'CONFIG_COMPILER_OPTIMIZATION_SIZE=n',
+        'CONFIG_COMPILER_OPTIMIZATION_PERF=n',
+        'CONFIG_COMPILER_OPTIMIZATION_CHECKS_SILENT=y'
+    ]
+
+    if DEBUG:
+        base_config.extend([
+            'CONFIG_BOOTLOADER_LOG_LEVEL_NONE=n',
+            'CONFIG_BOOTLOADER_LOG_LEVEL_ERROR=n',
+            'CONFIG_BOOTLOADER_LOG_LEVEL_WARN=n',
+            'CONFIG_BOOTLOADER_LOG_LEVEL_INFO=n',
+            'CONFIG_BOOTLOADER_LOG_LEVEL_DEBUG=y',
+            'CONFIG_BOOTLOADER_LOG_LEVEL_VERBOSE=n',
+            'CONFIG_LCD_ENABLE_DEBUG_LOG=y',
+            'CONFIG_HAL_LOG_LEVEL_NONE=n',
+            'CONFIG_HAL_LOG_LEVEL_ERROR=n',
+            'CONFIG_HAL_LOG_LEVEL_WARN=n',
+            'CONFIG_HAL_LOG_LEVEL_INFO=n',
+            'CONFIG_HAL_LOG_LEVEL_DEBUG=y',
+            'CONFIG_HAL_LOG_LEVEL_VERBOSE=n',
+            'CONFIG_LOG_MAXIMUM_LEVEL_ERROR=n',
+            'CONFIG_LOG_MAXIMUM_LEVEL_WARN=n',
+            'CONFIG_LOG_MAXIMUM_LEVEL_INFO=n',
+            'CONFIG_LOG_MAXIMUM_LEVEL_DEBUG=y',
+            'CONFIG_LOG_MAXIMUM_LEVEL_VERBOSE=n',
+            'CONFIG_LOG_DEFAULT_LEVEL_NONE=n',
+            'CONFIG_LOG_DEFAULT_LEVEL_ERROR=n',
+            'CONFIG_LOG_DEFAULT_LEVEL_WARN=n',
+            'CONFIG_LOG_DEFAULT_LEVEL_INFO=n',
+            'CONFIG_LOG_DEFAULT_LEVEL_DEBUG=y',
+            'CONFIG_LOG_DEFAULT_LEVEL_VERBOSE=n',
+        ])
+
+    base_config.append('')
+    args = list(args)
+
+    for arg in args[:]:
+        if arg.startswith('CONFIG_'):
+            if 'ESPTOOLPY_FLASHMODE' in arg:
+                for itm in ('OPI', 'QIO', 'QOUT', 'DIO', 'DOUT'):
+                    base_config.append(f'CONFIG_ESPTOOLPY_FLASHMODE_{itm}=n')
+            elif 'ESPTOOLPY_FLASHFREQ' in arg:
+                for itm in (
+                    15, 16, 20, 24, 26, 30, 32, 40, 48, 60, 64, 80, 120
+                ):
+                    base_config.append(f'CONFIG_ESPTOOLPY__FLASHFREQ_{itm}M=n')
+            elif 'SPIRAM_SPEED' in arg:
+                for itm in (20, 26, 40, 80, 120):
+                    base_config.append(f'CONFIG_SPIRAM_SPEED_{itm}M=n')
+            elif 'FLASH_SAMPLE_MODE' in arg:
+                for itm in ('STR', 'DTR'):
+                    base_config.append(
+                        f'CONFIG_ESPTOOLPY_FLASH_SAMPLE_MODE_{itm}=n'
+                    )
+
+            base_config.append(arg)
+            args.remove(arg)
+
+    base_config.append(f'CONFIG_ESPTOOLPY_FLASHSIZE_{flash_size}MB=y')
+    base_config.append(''.join([
+        'CONFIG_PARTITION_TABLE_CUSTOM_FILENAME=',
+        f'"{SCRIPT_DIR}/build/partitions.csv"'
+    ]))
+
+    if optimize_size:
+        base_config.append('CONFIG_COMPILER_OPTIMIZATION_SIZE=y')
+    else:
+        base_config.append('CONFIG_COMPILER_OPTIMIZATION_PERF=y')
+
+    if oct_flash:
+        base_config.append('CONFIG_ESPTOOLPY_OCT_FLASH=y')
+
+    for display_path in set_displays:
+        display_path = os.path.join(display_path, 'sdkconfig')
+        if not os.path.exists(display_path):
+            continue
+
+        base_config.extend(read_file(display_path).split('\n'))
+
+    with open(SDKCONFIG_PATH, 'w') as f:
+        f.write('\n'.join(base_config))
 
 
 def compile(*args):  # NOQA
@@ -1104,18 +1130,12 @@ def compile(*args):  # NOQA
     partition = Partition(p_size)
     partition.save()
 
-    update_mpconfigboard()
-
-    if (
-        board == 'ESP32_GENERIC' and
-        board_variant and
-        board_variant == 'SPIRAM'
-    ):
-        update_isr()
-
+    update_main()
+    update_mphalport()
+    update_mpthreadport()
     update_panic_handler()
-    set_thread_core()
-    update_for_usb()
+    update_mpconfigboard()
+    update_mpconfigport()
 
     src_path = 'micropy_updates/esp32'
     dst_path = 'lib/micropython/ports/esp32'
