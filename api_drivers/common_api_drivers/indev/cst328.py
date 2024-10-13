@@ -281,52 +281,43 @@ class CST328(pointer_framework.PointerDriver):
 
     def get_point(self, n):
         _state = 0
-        _x = -1
-        _y = -1
-        _id = -1
+        _x = 0
+        _y = 0
+        _id = 0
         _pressure = 0
         _rotation = 0
-        
+        _id = n
         _fingernum = (self._rx_buf[MODE_NORMAL_5_REG & 0xFF] & 0x0F)
         
         if n == 0:
-            _state = self._rx_buf[MODE_NORMAL_0_REG & 0xFF] & 0xF;
-            _x = COMBINE_H8L4_H(self._rx_buf, MODE_NORMAL_1_REG, MODE_NORMAL_3_REG);
-            _y = COMBINE_H8L4_L(self._rx_buf, MODE_NORMAL_2_REG, MODE_NORMAL_3_REG);
-            _pressure = self._rx_buf[MODE_NORMAL_4_REG & 0xF];
+            _state = self._rx_buf[MODE_NORMAL_0_REG & 0xFF] & 0xF
+            _x = COMBINE_H8L4_H(self._rx_buf, MODE_NORMAL_1_REG, MODE_NORMAL_3_REG)
+            _y = COMBINE_H8L4_L(self._rx_buf, MODE_NORMAL_2_REG, MODE_NORMAL_3_REG)
+            _pressure = self._rx_buf[MODE_NORMAL_4_REG & 0xF]
             
         elif n == 1:
-            _state = self._rx_buf[MODE_NORMAL_7_REG & 0xFF] & 0xF;
-            _x = COMBINE_H8L4_H(self._rx_buf, MODE_NORMAL_8_REG, MODE_NORMAL_10_REG);
-            _y = COMBINE_H8L4_L(self._rx_buf, MODE_NORMAL_9_REG, MODE_NORMAL_10_REG);
-            _pressure = self._rx_buf[MODE_NORMAL_11_REG & 0xF];
+            _state = self._rx_buf[MODE_NORMAL_7_REG & 0xFF] & 0xF
+            _x = COMBINE_H8L4_H(self._rx_buf, MODE_NORMAL_8_REG, MODE_NORMAL_10_REG)
+            _y = COMBINE_H8L4_L(self._rx_buf, MODE_NORMAL_9_REG, MODE_NORMAL_10_REG)
+            _pressure = self._rx_buf[MODE_NORMAL_11_REG & 0xF]
 
         elif n == 2:
-            _state = rx_buf[MODE_NORMAL_12_REG & 0xFF] & 0xF;
-            _x = COMBINE_H8L4_H(self._rx_buf, MODE_NORMAL_13_REG, MODE_NORMAL_15_REG);
-            _y = COMBINE_H8L4_L(self._rx_buf, MODE_NORMAL_14_REG, MODE_NORMAL_15_REG);
-            _pressure = self._rx_buf[MODE_NORMAL_16_REG & 0xF];
+            _state = rx_buf[MODE_NORMAL_12_REG & 0xFF] & 0xF
+            _x = COMBINE_H8L4_H(self._rx_buf, MODE_NORMAL_13_REG, MODE_NORMAL_15_REG)
+            _y = COMBINE_H8L4_L(self._rx_buf, MODE_NORMAL_14_REG, MODE_NORMAL_15_REG)
+            _pressure = self._rx_buf[MODE_NORMAL_16_REG & 0xF]
             
         elif n == 3:
-            _state = rx_buf[MODE_NORMAL_17_REG & 0xFF] & 0xF;
-            _x = COMBINE_H8L4_H(self._rx_buf, MODE_NORMAL_18_REG, MODE_NORMAL_20_REG);
-            _y = COMBINE_H8L4_L(self._rx_buf, MODE_NORMAL_19_REG, MODE_NORMAL_20_REG);
-            _pressure = self._rx_buf[MODE_NORMAL_21_REG & 0xF];
+            _state = rx_buf[MODE_NORMAL_17_REG & 0xFF] & 0xF
+            _x = COMBINE_H8L4_H(self._rx_buf, MODE_NORMAL_18_REG, MODE_NORMAL_20_REG)
+            _y = COMBINE_H8L4_L(self._rx_buf, MODE_NORMAL_19_REG, MODE_NORMAL_20_REG)
+            _pressure = self._rx_buf[MODE_NORMAL_21_REG & 0xF]
             
         elif n == 4:
-            _state = rx_buf[MODE_NORMAL_22_REG & 0xFF] & 0xF;
-            _x = COMBINE_H8L4_H(self._rx_buf, MODE_NORMAL_23_REG, MODE_NORMAL_25_REG);
-            _y = COMBINE_H8L4_L(self._rx_buf, MODE_NORMAL_24_REG, MODE_NORMAL_25_REG);
-            _pressure = self._rx_buf[MODE_NORMAL_26_REG & 0xF];     
-        
-        _id = n
+            _state = rx_buf[MODE_NORMAL_22_REG & 0xFF] & 0xF
+            _x = COMBINE_H8L4_H(self._rx_buf, MODE_NORMAL_23_REG, MODE_NORMAL_25_REG)
+            _y = COMBINE_H8L4_L(self._rx_buf, MODE_NORMAL_24_REG, MODE_NORMAL_25_REG)
+            _pressure = self._rx_buf[MODE_NORMAL_26_REG & 0xF]
 
-        if self.startup_rotation == pointer_framework.lv.DISPLAY_ROTATION._0:
-            pass
-            
-        elif self.startup_rotation == pointer_framework.lv.DISPLAY_ROTATION._90:
-            tmp = _x
-            _x = _y
-            _y = tmp
-        
         return _pressure, _x, _y
+
