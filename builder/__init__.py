@@ -126,6 +126,7 @@ def generate_manifest(
         f'{api_path}/frozen/indev/pointer_framework.py',
         f'{api_path}/fs_driver.py',
         f'{script_dir}/api_drivers/common_api_drivers/frozen/other/i2c.py',
+        f'{script_dir}/api_drivers/common_api_drivers/frozen/other/sht4x.py',
         (
             f'{script_dir}/api_drivers/common_api_drivers/'
             f'frozen/other/io_expander_framework.py'
