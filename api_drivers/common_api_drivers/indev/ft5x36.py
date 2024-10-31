@@ -21,7 +21,8 @@ class FT5x36(focaltech_touch.FocalTechTouch):
         device,
         touch_cal=None,
         startup_rotation=pointer_framework.lv.DISPLAY_ROTATION._0,  # NOQA
-        debug=False
+        debug=False,
+        factor=(1.0, 1.0)
     ):  # NOQA
 
         super().__init__(
@@ -29,7 +30,7 @@ class FT5x36(focaltech_touch.FocalTechTouch):
             touch_cal,
             startup_rotation,
             debug,
-            (2.24, 2.14),
+            factor,
             _FT5x36_CHIPID_1,
             _FT5x36_CHIPID_2,
             _FT5x36_CHIPID_3
