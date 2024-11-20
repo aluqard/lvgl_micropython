@@ -123,7 +123,6 @@ class DisplayDriver:
         self._backup_set_memory_location = None
 
         self._rotation = lv.DISPLAY_ROTATION._0  # NOQA
-        self._invert_colors = False
 
         self._rgb565_byte_swap = rgb565_byte_swap
         self._cmd_bits = _cmd_bits
@@ -434,16 +433,14 @@ class DisplayDriver:
     def delete_refr_timer(self):
         self._disp_drv.delete_refr_timer()
 
-    def invert_colors(self):
+    def set_color_inversion(self, value):
         # If your white is showing up as black and your black
         # is showing up as white try setting this either True or False
         # and see if it corrects the problem.
         if None in (self._INVON, self._INVOFF):
             raise NotImplementedError
 
-        self._invert_colors = not self._invert_colors
-
-        if self._invert_colors:
+        if value:
             self.set_params(self._INVON)
         else:
             self.set_params(self._INVOFF)
@@ -619,7 +616,7 @@ class DisplayDriver:
         # what converts from the C_Array object the binding passes into a
         # memoryview object that can be passed to the bus drivers
         data_view = color_p.__dereference__(size)
-        self._data_bus.tx_color(cmd, data_view, x1, y1, x2, y2)
+        self._data_bus.tx_color(cmd, data_view, x1, y1, x2, y2, self._rotation, self._disp_drv.flush_is_last())
 
     # we always register this callback no matter what. This is what tells LVGL
     # that the buffer is able to be written to. If this callback doesn't get
