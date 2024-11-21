@@ -527,12 +527,10 @@ extern void *mp_lv_roots;
 #define LV_FONT_UNSCII_8  1
 #define LV_FONT_UNSCII_16 1
 
-#define LV_FONT_ANDALEMONO_16 1
-
 /*Optionally declare custom fonts here.
  *You can use these fonts as default font too and they will be available globally.
  *E.g. #define LV_FONT_CUSTOM_DECLARE   LV_FONT_DECLARE(my_font_1) LV_FONT_DECLARE(my_font_2)*/
-#define LV_FONT_CUSTOM_DECLARE LV_FONT_DECLARE(lv_font_andalemono_16)
+#define LV_FONT_CUSTOM_DECLARE LV_FONT_DECLARE(lv_font_andalemono_16) LV_FONT_DECLARE(lv_font_awesome_14)
 
 /*Always set a default font*/
 #define LV_FONT_DEFAULT &lv_font_montserrat_14
@@ -760,7 +758,7 @@ extern void *mp_lv_roots;
 #endif
 
 /*API for memory-mapped file access. */
-#define LV_USE_FS_MEMFS 0
+#define LV_USE_FS_MEMFS 1
 #if LV_USE_FS_MEMFS
     #define LV_FS_MEMFS_LETTER '\0'     /*Set an upper cased letter on which the drive will accessible (e.g. 'A')*/
 #endif

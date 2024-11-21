@@ -1,0 +1,2 @@
+#!/bin/bash
+python3 make.py esp32 clean BOARD=UM_FEATHERS3 BOARD_VARIANT=SPIRAM_OCT DISPLAY=hx8357b INDEV=ft5x36 FROZEN_MANIFEST=/home/aluqard/lvgl_micropython_aluqard/lib/micropython/ports/esp32/boards/UM_FEATHERS3/manifest.py --usb-otg --dual-core-threads
