@@ -10,5 +10,5 @@ if [ ! -d "$usqlite" ]; then
   cd ..
 fi
 cd ..
-cp font/* lib/lvgl/src/font
+cp -R font/* lib/lvgl/src/font
 python3 make.py unix clean DISPLAY=sdl_display INDEV=sdl_pointer

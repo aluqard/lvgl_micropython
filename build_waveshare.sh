@@ -9,6 +9,6 @@ if [ ! -d "$usqlite" ]; then
   cd ..
 fi
 cd ..
-cp font/* lib/lvgl/src/font
+cp -R font/* lib/lvgl/src/font
 yes | cp -R boards/ESP32_WAVESHARE lib/micropython/ports/esp32/boards 
 python3 make.py esp32 clean BOARD=ESP32_WAVESHARE BOARD_VARIANT=SPIRAM_OCT DISPLAY=st7789 INDEV=cst328 FROZEN_MANIFEST=/home/aluqard/lvgl_micropython_aluqard/lib/micropython/ports/esp32/boards/ESP32_WAVESHARE/manifest.py --usb-otg --dual-core-threads
