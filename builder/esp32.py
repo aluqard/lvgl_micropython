@@ -197,10 +197,10 @@ def common_args(extra_args):
     global ota
     global dual_core_threads
     global task_stack_size
-
+    '''
     if board == 'ARDUINO_NANO_ESP32':
         raise RuntimeError('Board is not currently supported')
-
+    '''
     if board in (
         'UM_NANOS3', 'ESP32_GENERIC_S3',
         'UM_TINYS3', 'UM_TINYWATCHS3'
@@ -208,7 +208,7 @@ def common_args(extra_args):
         def_flash_size = 8
     elif board in (
         'UM_FEATHERS2', 'SIL_WESP32',
-        'UM_PROS3', 'UM_FEATHERS3', 'T-HMI', 'ESP32_WAVESHARE', 'T_DISPLAYS3'
+        'UM_PROS3', 'UM_FEATHERS3', 'T-HMI', 'ESP32_WAVESHARE', 'T_DISPLAYS3', 'ARDUINO_NANO_ESP32'
     ):
         def_flash_size = 16
     else:
@@ -444,6 +444,8 @@ def parse_args(extra_args, lv_cflags, brd):
     elif board == 'T_DISPLAYS3':
         extra_args = esp32_s3_args(extra_args)
     elif board == 'ESP32_WAVESHARE':
+        extra_args = esp32_s3_args(extra_args)
+    elif board == 'ARDUINO_NANO_ESP32':
         extra_args = esp32_s3_args(extra_args)
     elif board == 'ESP32_GENERIC_C3':
         extra_args = esp32_c3_args(extra_args)

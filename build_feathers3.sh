@@ -1,9 +1,9 @@
 #!/bin/bash
 sudo apt-get install git wget flex bison gperf python3 python3-pip python3-venv cmake ninja-build ccache libffi-dev libssl-dev dfu-util libusb-1.0-0 pkg-config
 cd ext_mod
-if [ ! -d usqlite ]; then
-  git clone https://github.com/spatialdude/usqlite.git
+if [ -d usqlite ]; then
   cd usqlite
+  
   sed -i 's/\^esp32/\^esp32*/g' micropython.cmake
   sed -i '/mtext-section-literals/a \\t\t-DSQLITE_DEBUG' micropython.cmake
   cd ..

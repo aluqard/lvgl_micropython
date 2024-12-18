@@ -23,7 +23,7 @@
     #define MICROPY_RLOTTIE  0
 #endif
 #ifndef MICROPY_TINY_TTF
-    #define MICROPY_TINY_TTF  0
+    #define MICROPY_TINY_TTF  1
 #endif
 #ifndef MICROPY_CACHE_SIZE
     #define MICROPY_CACHE_SIZE  768000
