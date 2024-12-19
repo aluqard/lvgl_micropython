@@ -15,4 +15,4 @@
 	url = https://github.com/espressif/esp-idf
 [submodule "ext_mod/usqlite"]
 	path = ext_mod/usqlite
-	url = https://github.com/spatialdude/usqlite.git
+	url = https://github.com/spatialdude/usqlite
