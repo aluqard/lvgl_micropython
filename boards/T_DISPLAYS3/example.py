@@ -1,104 +1,91 @@
 import gc
-import thmi
+import os
+import tdisplays3 as tds3
 import lcd_bus
-import task_handler
-from machine import SPI, Pin, SDCard
-import fs_driver
-
-thmi.power_on()
-thmi.enable()
-
-disp_bus = lcd_bus.I80Bus(
-    dc=thmi.LCD_DC_PIN,
-    wr=thmi.LCD_PCLK_PIN,
-    freq=20_000_000,
-    data0=thmi.LCD_DATA0_PIN,
-    data1=thmi.LCD_DATA1_PIN,
-    data2=thmi.LCD_DATA2_PIN,
-    data3=thmi.LCD_DATA3_PIN,
-    data4=thmi.LCD_DATA4_PIN,
-    data5=thmi.LCD_DATA5_PIN,
-    data6=thmi.LCD_DATA6_PIN,
-    data7=thmi.LCD_DATA7_PIN)
-
-fb1 = disp_bus.allocate_framebuffer(int(thmi.LCD_WIDTH * thmi.LCD_WIDTH / 10), lcd_bus.MEMORY_INTERNAL | lcd_bus.MEMORY_DMA)
-fb2 = disp_bus.allocate_framebuffer(int(thmi.LCD_WIDTH * thmi.LCD_WIDTH / 10), lcd_bus.MEMORY_INTERNAL | lcd_bus.MEMORY_DMA)
-
-#fb1 = disp_bus.allocate_framebuffer(int(thmi.LCD_WIDTH * thmi.LCD_WIDTH / 10), lcd_bus.MEMORY_SPIRAM)
-#fb2 = disp_bus.allocate_framebuffer(int(thmi.LCD_WIDTH * thmi.LCD_WIDTH / 10), lcd_bus.MEMORY_SPIRAM)
-    
-import st7789
 import lvgl as lv
+import st7789
+import task_handler
+from machine import SPI, Pin
+import machine
 
-lv.init()
+# RD 9 - might have to be pulled high
+rd = machine.Pin(tds3.LCD_RD_PIN, machine.Pin.OUT)
+rd.on()
 
-display = st7789.ST7789(
-    data_bus=disp_bus,
-    frame_buffer1=fb1,
-    frame_buffer2=fb2,
-    display_width=thmi.LCD_WIDTH,
-    display_height=thmi.LCD_HEIGHT,
-    power_pin=thmi.PWR_EN_PIN,
-    power_on_state=st7789.STATE_HIGH,
-    backlight_pin=thmi.LCD_BK_LIGHT_PIN,
-    backlight_on_state=st7789.STATE_HIGH,
-    # reset=_RST,
-    # reset_state=st7796.STATE_LOW,
-    color_space=lv.COLOR_FORMAT.RGB565,
-    color_byte_order=st7789.BYTE_ORDER_BGR,
-    rgb565_byte_swap=True,
-)
+# CS 6 - might have to be pulled low
+cs = machine.Pin(tds3.LCD_CS_PIN, machine.Pin.OUT)
+cs.off()
 
-import xpt2046
+#pwr = Pin(tds3.PWR_ON_PIN, Pin.OUT)
+#pwr.on()
 
-spi_bus = SPI.Bus(
-    host=1,
-    mosi=thmi.TP_MOSI_PIN,
-    miso=thmi.TP_MISO_PIN,
-    sck=thmi.TP_SCLK_PIN)
+#bl = Pin(tds3.LCD_BK_LIGHT_PIN, Pin.OUT)
+#bl.on()
 
-api_dev = SPI.Device(
-    spi_bus=spi_bus,
-    freq=1_000_000,
-    cs=thmi.TP_CS_PIN)
+class test():
+    def __init__(self):
+        pass
+    
+    def start(self):
+        self.disp_bus = lcd_bus.I80Bus(
+            dc=tds3.LCD_DC_PIN,
+            wr=tds3.LCD_WR_PIN,
+            cs=tds3.LCD_CS_PIN,
+            freq=20_000_000,
+            data0=tds3.LCD_DATA0_PIN,
+            data1=tds3.LCD_DATA1_PIN,
+            data2=tds3.LCD_DATA2_PIN,
+            data3=tds3.LCD_DATA3_PIN,
+            data4=tds3.LCD_DATA4_PIN,
+            data5=tds3.LCD_DATA5_PIN,
+            data6=tds3.LCD_DATA6_PIN,
+            data7=tds3.LCD_DATA7_PIN)
 
-indev = xpt2046.XPT2046(api_dev)
+        fb1 = self.disp_bus.allocate_framebuffer(int(240 * 240 / 10), lcd_bus.MEMORY_INTERNAL | lcd_bus.MEMORY_DMA)
+        fb2 = self.disp_bus.allocate_framebuffer(int(240 * 240 / 10), lcd_bus.MEMORY_INTERNAL | lcd_bus.MEMORY_DMA)
 
-display.init()
-display.set_power(True)
-display.set_rotation(lv.DISPLAY_ROTATION._180)
-#display.invert_colors()
-display.set_params(display._INVOFF)
-display.set_backlight(100)
+#        fb1 = disp_bus.allocate_framebuffer(int(170 * 170 / 10), lcd_bus.MEMORY_SPIRAM)
+#        fb2 = disp_bus.allocate_framebuffer(int(170 * 170 / 10), lcd_bus.MEMORY_SPIRAM)
 
-th = task_handler.TaskHandler()
+        self.display = st7789.ST7789(
+            data_bus=self.disp_bus,
+            frame_buffer1=fb1,
+            frame_buffer2=fb2,
+            display_width=240,
+            display_height=320,
+            reset_pin=tds3.LCD_RST_PIN,
+            reset_state=st7789.STATE_LOW,
+            backlight_pin=tds3.LCD_BK_LIGHT_PIN,
+            backlight_on_state=st7789.STATE_HIGH,
+            color_space=lv.COLOR_FORMAT.RGB888,
+            color_byte_order=st7789.BYTE_ORDER_BGR
+        )
+        
+        '''
+        try:
+            sd = SDCard(slot=1, freq=1_230_000)
+            os.mount(sd, '/sd')
+            fs_drv = lv.fs_drv_t()
+            fs_driver.fs_register(fs_drv, 'S')
+        except Exception as e:
+            print('{e}')
+        '''
+        
+        lv.init()
 
-scrn = lv.screen_active()
-scrn.set_style_bg_color(lv.color_hex(0xffffff), 0)
+        self.display.init()
+        self.display.set_power(True)
+        self.display.set_rotation(lv.DISPLAY_ROTATION._270)
+        #display.invert_colors(True)
+        self.display.set_backlight(100)
 
-slider = lv.slider(scrn)
-slider.set_size(150, 20)
-slider.center()
+        scr = lv.screen_active()
+        scr.set_style_bg_color(lv.color_hex(0xffffff), 0)
+        
+        btn = lv.button(scr);
+        label = lv.label(btn)
+        label.set_text('HELLO WORLD!')
+        btn.center()
 
-label = lv.label(scrn)
-label.set_text('HELLO WORLD!')
-label.align(lv.ALIGN.CENTER, 0, -50)
-
-
-import time
-
-print('red')
-scrn = lv.screen_active()
-scrn.set_style_bg_color(lv.color_hex(0xFF0000), 0)
-lv.refr_now(lv.display_get_default())
-time.sleep_ms(5000)
-
-print('green')
-scrn.set_style_bg_color(lv.color_hex(0x00FF00), 0)
-lv.refr_now(lv.display_get_default())
-time.sleep_ms(5000)
-
-print('blue')
-scrn.set_style_bg_color(lv.color_hex(0x0000FF), 0)
-lv.refr_now(lv.display_get_default())
+        th = task_handler.TaskHandler()
 
