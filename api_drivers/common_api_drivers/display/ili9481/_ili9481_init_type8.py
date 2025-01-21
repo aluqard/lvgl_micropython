@@ -1,3 +1,5 @@
+# Copyright (c) 2024 - 2025 Kevin G. Schlosser
+
 import time
 from micropython import const  # NOQA
 
@@ -47,7 +49,6 @@ def init(self):
     param_buf[0] = 0x01
     param_buf[1] = 0x11
     self.set_params(_RDNVSTAT, param_mv[:2])
-
 
     param_buf[0] = 0x00
     param_buf[1] = 0x3B

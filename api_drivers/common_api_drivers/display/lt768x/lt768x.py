@@ -1,4 +1,6 @@
-import ra8876 as _ra8876
+# Copyright (c) 2024 - 2025 Kevin G. Schlosser
+
+import ra8876 as _ra8876  # NOQA
 
 
 STATE_HIGH = _ra8876.STATE_HIGH

@@ -1,3 +1,5 @@
+# Copyright (c) 2024 - 2025 Kevin G. Schlosser
+
 import shutil
 import sys
 import os
@@ -9,7 +11,13 @@ import queue
 _windows_env = None
 
 
+DO_NOT_SCRUB_BUILD_FOLDER = False
+
+
 def scrub_build_folder():
+    if DO_NOT_SCRUB_BUILD_FOLDER:
+        return
+
     for f in os.listdir('build'):
         f = os.path.join('build', f)
         for pattern in ('.h', 'manifest.py', '.board'):
@@ -148,6 +156,23 @@ def setup_windows_build():
     return _windows_env
 
 
+def get_lvgl_version():
+    with open('lib/lvgl/lv_version.h', 'r') as f:
+        data = f.read()
+
+    data = data.split('LVGL_VERSION_MAJOR', 1)[-1]
+    major, data = [item.strip() for item in data.split('\n', 1)]
+    data = data.split('LVGL_VERSION_MINOR', 1)[-1]
+    minor, data = [item.strip() for item in data.split('\n', 1)]
+    data = data.split('LVGL_VERSION_PATCH', 1)[-1]
+    patch, data = [item.strip() for item in data.split('\n', 1)]
+
+    if not patch:
+        patch = '0'
+
+    return f'{major}.{minor}.{patch}'
+
+
 def set_mp_version(port):
     mpconfigport = f'lib/micropython/ports/{port}/mpconfigport.h'
 
@@ -156,9 +181,10 @@ def set_mp_version(port):
 
     if 'MICROPY_BANNER_NAME_AND_VERSION' not in data:
         data += (
-            '\n\n#include "genhdr/mpversion.h"'
-            '\n\n#define MICROPY_BANNER_NAME_AND_VERSION "LVGL MicroPython '
-            '1.23.0 on " MICROPY_BUILD_DATE\n\n'
+            '\n\n#include "genhdr/mpversion.h"\n\n'
+            '\n\n#define MICROPY_BANNER_NAME_AND_VERSION '
+            f'"LVGL ({get_lvgl_version()}) MicroPython (" MICROPY_VERSION_STRING '
+            f'") Binding compiled on " MICROPY_BUILD_DATE\n\n'
         )
 
         with open(mpconfigport, 'wb') as f:
@@ -191,7 +217,7 @@ def update_mphalport(target):
 
 def generate_manifest(
     script_dir, lvgl_api, manifest_path, displays,
-    indevs, frozen_manifest, *addl_manifest_files
+    indevs, io_expanders, frozen_manifest, *addl_manifest_files
 ):
     addl_manifest_files = list(addl_manifest_files)
 
@@ -221,12 +247,10 @@ def generate_manifest(
         f'{api_path}/frozen/indev/keypad_framework.py',
         f'{api_path}/frozen/indev/pointer_framework.py',
         f'{api_path}/fs_driver.py',
+        f'{api_path}/frozen/io_expander/io_expander_framework.py',
         f'{script_dir}/api_drivers/common_api_drivers/frozen/other/i2c.py',
         f'{script_dir}/api_drivers/common_api_drivers/frozen/other/sht4x.py',
-        (
-            f'{script_dir}/api_drivers/common_api_drivers/'
-            f'frozen/other/io_expander_framework.py'
-        ),
+
         (
             f'{script_dir}/api_drivers/common_api_drivers/'
             f'frozen/other/task_handler.py'
@@ -251,10 +275,76 @@ def generate_manifest(
         entry = f"freeze('{file_path}', '{file_name}')"
         manifest_files.append(entry)
 
+    if 'all' in io_expanders:
+        io_expanders.remove('all')
+        path = f'{script_dir}/api_drivers/common_api_drivers/io_expander'
+
+        for file in os.listdir(path):
+            if '.wip' in file:
+                continue
+
+            if file.endswith('.py'):
+                name = file[:-3]
+                io_expanders.append(name)
+
+    if 'all' in indevs:
+        indevs.remove('all')
+        path = f'{script_dir}/api_drivers/common_api_drivers/indev'
+        for file in os.listdir(path):
+            if '.wip' in file:
+                continue
+
+            if (
+                file == 'focaltech_touch.py' or
+                file == 'evdev' or
+                'extension' in file or
+                'settings' in file
+            ):
+                continue
+
+            if file.endswith('.py'):
+                name = file[:-3]
+                indevs.append(name)
+
+    if 'all' in displays:
+        displays.remove('all')
+        path = f'{script_dir}/api_drivers/common_api_drivers/display'
+        for file in os.listdir(path):
+            if file.endswith('.py'):
+                continue
+
+            if '.wip' in file:
+                continue
+
+            displays.append(file)
+
+    for file in io_expanders:
+        if not os.path.exists(file):
+            tmp_file = (
+                f'{script_dir}/api_drivers/common_api_drivers'
+                f'/io_expander/{file.lower()}.py'
+            )
+
+            if not os.path.exists(tmp_file):
+                raise RuntimeError(f'IO Expander not found "{file}"')
+
+            print(tmp_file)
+
+            file_path, file_name = os.path.split(tmp_file)
+            entry = f"freeze('{file_path}', '{file_name}')"
+        else:
+            print(file)
+            file_path, file_name = os.path.split(file)
+            entry = f"freeze('{file_path}', '{file_name}')"
+
+        if entry not in manifest_files:
+            manifest_files.append(entry)
+
     for file in indevs:
         if not os.path.exists(file):
             tmp_file = (
-                f'{script_dir}/api_drivers/common_api_drivers/indev/{file.lower()}.py'
+                f'{script_dir}/api_drivers/common_api_drivers'
+                f'/indev/{file.lower()}.py'
             )
 
             if not os.path.exists(tmp_file):
@@ -268,7 +358,9 @@ def generate_manifest(
                 print(focaltech_touch)
                 directory, file_name = os.path.split(focaltech_touch)
                 entry = f"freeze('{directory}', '{file_name}')"
-                manifest_files.append(entry)
+
+                if entry not in manifest_files:
+                    manifest_files.append(entry)
 
             file = tmp_file
 
@@ -279,19 +371,24 @@ def generate_manifest(
         if os.path.exists(extension):
             print(extension)
             entry = f"freeze('{directory}', '{extension_file}')"
-            manifest_files.append(entry)
+
+            if entry not in manifest_files:
+                manifest_files.append(entry)
 
         print(file)
         file_path, file_name = os.path.split(file)
         entry = f"freeze('{file_path}', '{file_name}')"
-        manifest_files.append(entry)
+
+        if entry not in manifest_files:
+            manifest_files.append(entry)
 
     display_paths = []
 
     for file in displays:
         if not os.path.exists(file):
             tmp_file = (
-                f'{script_dir}/api_drivers/common_api_drivers/display/{file.lower()}'
+                f'{script_dir}/api_drivers/common_api_drivers'
+                f'/display/{file.lower()}'
             )
 
             if not os.path.exists(tmp_file):
@@ -305,12 +402,14 @@ def generate_manifest(
                 print(os.path.join(tmp_file, file_name))
 
                 entry = f"freeze('{tmp_file}', '{file_name}')"
-                manifest_files.append(entry)
+                if entry not in manifest_files:
+                    manifest_files.append(entry)
         else:
             print(file)
             file_path, file_name = os.path.split(file)
             entry = f"freeze('{file_path}', '{file_name}')"
-            manifest_files.append(entry)
+            if entry not in manifest_files:
+                manifest_files.append(entry)
 
     manifest_files = '\n'.join(manifest_files)
 
@@ -338,7 +437,7 @@ def get_micropython():
         'git submodule update --init --depth=1 -- lib/micropython',
     ]
     print()
-    print('collecting MicroPython 1.23.0')
+    print('collecting MicroPython 1.24.1')
     result, _ = spawn(cmd_, spinner=True)
     if result != 0:
         sys.exit(result)
@@ -347,17 +446,13 @@ def get_micropython():
     with open(mkrules_path, 'rb') as f:
         data = f.read().decode('utf-8')
 
-    pattern = (
-        '$(Q)git submodule update --init '
-        '$(addprefix $(TOP)/,$(GIT_SUBMODULES))'
-    )
+    pattern = '$(Q)cd $(TOP) && git submodule update --init $(GIT_SUBMODULES)'
+
     if pattern in data:
         data = data.replace(
             pattern,
-            (
-                '$(Q)git submodule update --init --depth=1 '
-                '$(addprefix $(TOP)/,$(GIT_SUBMODULES))'
-            )
+            '$(Q)cd $(TOP) && git submodule '
+            'update --init --depth=1 $(GIT_SUBMODULES)'
         )
         with open(mkrules_path, 'wb') as f:
             f.write(data.encode('utf-8'))
@@ -680,7 +775,7 @@ def mpy_cross():
 
 
 def build_manifest(
-    target, script_dir, lvgl_api, displays, indevs, frozen_manifest
+    target, script_dir, lvgl_api, displays, indevs, expanders, frozen_manifest
 ):
     update_mphalport(target)
     if target == 'teensy':
@@ -692,7 +787,7 @@ def build_manifest(
 
     generate_manifest(
         script_dir, lvgl_api, manifest_path,
-        displays, indevs, frozen_manifest
+        displays, indevs, expanders, frozen_manifest
     )
 
 

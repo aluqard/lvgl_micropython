@@ -1,3 +1,17 @@
+***IMPORTANT READ ME FIRST***
+
+* DO NOT use any information from the official binding and try to use that when compiling this binding it is not going to work
+* DO NOT add any submodule initilization commands when cloning the repo or any any point after the repo has been cloned.
+  To clone and build this is how it's done.
+  ```
+  git clone https://github.com/lvgl-micropython/lvgl_micropython
+  cd lvgl_micropython
+  python3 make.py esp32 ......
+  ```
+* If you want to update to the current master then delete your local copy and clone it again from scratch.
+
+
+
 # LVGL binding for Micropython
 ______________________________
 
@@ -30,6 +44,27 @@ to C99 and vice versa. It allows us access to the LVGL code by using the Python 
 
 <br>
 
+## *Important Update*
+
+I have altered how the RGBBus driver works. Due to low framerates from LVGL needing to render the whole screen 
+each time a small change is made and LVGL also having to keep the 2 frame buffers in sync I have decided to try 
+and bring a little bit of my coding ability to the show to see if I am able to overcome some of the performance issues.
+
+This comes at the cost of additional memory but due to the buffers needing to reside in SPIRAM because of their size 
+I figured what's a couple hundred K more. What I have done is this.
+
+The 2 full frame buffers are no longer accessable to the user. These are kept tucked away in C code. The user is able to 
+allocate partial buffers of any size they want. I have not messed about with this to see if there is a sweet spot with the 
+size but I would imagine that 1/10 the display size is a good starting point. I am running a task on the second core of the ESP32
+and in that task is where the buffer copying takes place. This is ideal because it is able to offload that work so there is no 
+drop in performance in the user code. MicroPython only uses one core of the ESP32 and that is what makes this an ideal thing to do. 
+
+If you use 2 partial buffers while one of being copied to the full frame buffer LVGL is able to fill the other partial buffer.
+Another nifty thing I have done is I am handling the rotation of the screen in that task as well. This should provide much better 
+performance than having LVGL handle the rotation.
+
+So make sure when you are creating the frame buffers for the RGB display that you make them a fraction of the size of what they 
+used to be.
 
 ## Table of Contents
 
@@ -535,18 +570,65 @@ Common options that are available across all esp32 targets:
 * `--task-stack-size={stack size in bytes}`: Sets the default stack size for threads
 * `CONFIG_*={value}`: You can alter the config settings of the esp-idf by using these settings. Refer to the ESP-IDF documentation
                       for further information
+* `--uart-repl-bitrate={baud/bitrate}`: This changes the connection speed for the serial connection when using the UART REPL.
+                                        This is a nice feature to use when transferring large files to the ESP32. The highest 
+                                        speed I have been able to set it to is 921600, you might be able to set it higher depending
+                                        on the UART to USB bridge IC used and the type of physical connection. 
+* `--enable-uart-repl={y/n}`: This allows you to turn on and off the UART based REPL. You will wany to set this of you use USB-CDC or JTAG for the REPL output
 
 
 Options specific to the ESP32-S3 processors:
 
-* `--usb-otg`: Enable REPL output on pins 19 & 20 of the ESP32-S3
-* `--usb-jtag`: Enable JTAG output on pins 19 & 20 of the ESP32-S3
 * `--octal-flash`: Set this if you have octal SPI flash
 
-Options specific to the ESP32-S2 processors:
+Options specific to the ESP32-S2, ESP32-S3, ESP32-C3 and ESP32-C6 processors:
 
-* `--usb-otg`: Enable REPL output on pins 19 & 20 of the ESP32-S2
-* `--usb-jtag`: Enable JTAG output on pins 19 & 20 of the ESP32-S2
+* `--enable-cdc-repl={y/n}`: Enable/disable REPL output over CDC on the USB pins
+* `--enable-jtag-repl={y/n}`: Enable/disable REPL output over JTAG on the USB pins
+
+
+This next option is abailable for all ESP32 series MCU's I placed it here instead of above 
+because it is going to need some in depth explaining. This is for advanced users.
+
+* `--custom-board-path`
+
+I added the ability to provide a path to a custom board. There are a few requirememnts for 
+this to work properly. The path needs to point to the folder that holds the board specification 
+files. Here is a list of required files.
+
+* `board.json`: This file outlines what the board is. At a minimum the file needs to contain the following.
+                ```
+                {
+                    "mcu": "{MCU}"
+                }
+                ```
+                where `{MCU}` is one of the follwing:
+
+  * esp32
+  * esp32s2
+  * exp32s3
+  * exp32c3
+  * exp32c6
+
+* `sdkconfig.board`: This file contains all of the ESP-IDF specific config settings. If you don't know 
+                     what needs to be set in here then please ask me for assistance.
+* `mpconfigboard.h`: MicroPython config settings. If you don't know what needs to be set in here then
+                     please ask me for assistance.
+* `mpconfigboard.cmake`: Build script. At a minimum the following should be in the build script.
+                         `{MCU}` is replaced with one of the options from the list of MCU's above.
+                         `{BOARD_CONATINING_FOLDER}` if the name of the folder these files are located in.
+```
+set(IDF_TARGET {MCU})
+
+set(SDKCONFIG_DEFAULTS
+    boards/sdkconfig.base
+    ${SDKCONFIG_IDF_VERSION_SPECIFIC}
+    boards/{BOARD_CONATINING_FOLDER}/sdkconfig.board
+)
+```
+
+* `partition.csv`: This file dictates what the partitions are supposed to be on the ESP32. As for assistance
+                   If you do not know how to create one of these.
 
 <br>
 

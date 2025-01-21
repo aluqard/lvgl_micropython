@@ -1,3 +1,5 @@
+# Copyright (c) 2024 - 2025 Kevin G. Schlosser
+
 from typing import Union
 
 def remap(
@@ -25,3 +27,26 @@ def remap(
 
 def int_float_converter(value: Union[float, int], /) -> Union[float, int]:
     ...
+
+
+def spi_mode_to_polarity_phase(mode: int, /) -> tuple[int]:
+    """
+
+    :param mode: spi mode, can be 0, 1, 2 or 3
+    :type mode: `int`
+
+    :returns: the 2 integer values as `(polarity, phase)`
+    :rtype: `tuple`
+    """
+
+def spi_polarity_phase_to_mode(polarity: int, phase: int, /) -> int:
+    """
+    :param polarity: 1 or 0
+    :type polarity: `int`
+
+    :param phase: 1 or 0
+    :type phase: `int`
+
+    :returns: 0, 1, 2 or 3
+    :rtype: `int`
+    """

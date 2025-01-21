@@ -1,3 +1,5 @@
+# Copyright (c) 2024 - 2025 Kevin G. Schlosser
+
 import time
 from micropython import const  # NOQA
 
@@ -76,7 +78,6 @@ def init(self):
     param_buf[11] = 0x00
     self.set_params(_GAMMASET, param_mv[:12])
 
-
     param_buf[0] = 0x00
     self.set_params(_IFMODE, param_mv[:1])
 
@@ -144,5 +145,3 @@ def init(self):
     time.sleep_ms(120)  # NOQA
     self.set_params(_DISPON)
     time.sleep_ms(25)  # NOQA
-
-    display_driver_framework.DisplayDriver.init(self)

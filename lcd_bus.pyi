@@ -1,3 +1,5 @@
+# Copyright (c) 2024 - 2025 Kevin G. Schlosser
+
 from typing import Any, Callable, Optional, Union, ClassVar, Final
 import array
 import spi as _spi
@@ -11,33 +13,6 @@ MEMORY_SPIRAM: Final[int] = ...
 MEMORY_INTERNAL: Final[int] = ...
 MEMORY_DEFAULT: Final[int] = ...
 DEBUG_ENABLED: Final[int] = ...
-
-
-class SPI3Wire:
-
-    def __init__(
-        self,
-        *,
-        mosi: int,
-        sclk: int,
-        freq: int = 500000,
-        cs: int = -1,
-        cs_high_active: bool = False,
-        keep_cs_inactive: bool = True,
-        lsb_first: bool = False,
-        dc_zero_on_data: bool = False,
-        use_dc_bit: bool = False,
-    ):
-        ...
-
-    def init(self, cmd_bits: int, param_bits: int, /) -> None:
-        ...
-
-    def deinit(self) -> None:
-        ...
-
-    def tx_param(self, cmd: int, params: Optional[_BufferType] = None, /) -> None:
-        ...
 
 
 class I2CBus:
@@ -74,7 +49,7 @@ class I2CBus:
     def tx_param(self, cmd: int, params: Optional[_BufferType] = None, /) -> None:
         ...
 
-    def tx_color(self, cmd: int, data: _BufferType, start_x: int, start_y: int, end_x: int, end_y: int, /) -> None:
+    def tx_color(self, cmd: int, data: _BufferType, start_x: int, start_y: int, end_x: int, end_y: int, rotation: int, last_update: bool, /) -> None:
         ...
 
     def rx_param(self, cmd: int, params: _BufferType, /) -> None:
@@ -86,13 +61,16 @@ class I2CBus:
     def allocate_framebuffer(self, size: int, caps: int, /) -> Union[None, memoryview]:
         ...
 
+    def free_framebuffer(self, framebuffer: memoryview, /) -> None:
+        ...
+
 
 class SPIBus:
 
     def __init__(
         self,
         *,
-        spi_bus: _spi.SPI,
+        spi_bus: _spi.SPI.Bus,
         freq: int,
         dc: int,
         cs: Optional[int] = -1,
@@ -119,7 +97,7 @@ class SPIBus:
     def tx_param(self, cmd: int, params: Optional[_BufferType] = None, /) -> None:
         ...
 
-    def tx_color(self, cmd: int, data: _BufferType, start_x: int, start_y: int, end_x: int, end_y: int, /) -> None:
+    def tx_color(self, cmd: int, data: _BufferType, start_x: int, start_y: int, end_x: int, end_y: int, rotation: int, last_update: bool, /) -> None:
         ...
 
     def rx_param(self, cmd: int, params: _BufferType, /) -> None:
@@ -129,6 +107,9 @@ class SPIBus:
         ...
 
     def allocate_framebuffer(self, size: int, caps: int, /) -> Union[None, memoryview]:
+        ...
+
+    def free_framebuffer(self, framebuffer: memoryview, /) -> None:
         ...
 
 
@@ -214,7 +195,7 @@ class SDLBus:
     ) -> None:
         ...
 
-    def tx_color(self, cmd: int, data: _BufferType, start_x: int, start_y: int, end_x: int, end_y: int, /) -> None:
+    def tx_color(self, cmd: int, data: _BufferType, start_x: int, start_y: int, end_x: int, end_y: int, rotation: int, last_update: bool, /) -> None:
         ...
 
     def rx_param(self, cmd: int, params: _BufferType, /) -> None:
@@ -224,6 +205,9 @@ class SDLBus:
         ...
 
     def allocate_framebuffer(self, size: int, caps: int, /) -> Union[None, memoryview]:
+        ...
+
+    def free_framebuffer(self, framebuffer: memoryview, /) -> None:
         ...
 
     def poll_events(self):
@@ -237,7 +221,6 @@ class RGBBus:
         hsync: int,
         vsync: int,
         de: int,
-        disp: int,
         pclk: int,
         data0: int,
         data1: int,
@@ -287,7 +270,7 @@ class RGBBus:
     def tx_param(self, cmd: int, params: Optional[_BufferType] = None, /) -> None:
         ...
 
-    def tx_color(self, cmd: int, data: _BufferType, start_x: int, start_y: int, end_x: int, end_y: int, /) -> None:
+    def tx_color(self, cmd: int, data: _BufferType, start_x: int, start_y: int, end_x: int, end_y: int, rotation: int, last_update: bool, /) -> None:
         ...
 
     def rx_param(self, cmd: int, params: _BufferType, /) -> None:
@@ -297,6 +280,9 @@ class RGBBus:
         ...
 
     def allocate_framebuffer(self, size: int, caps: int, /) -> Union[None, memoryview]:
+        ...
+
+    def free_framebuffer(self, framebuffer: memoryview, /) -> None:
         ...
 
 
@@ -349,7 +335,7 @@ class I80Bus:
     def register_callback(self, callback: Callable[[Any, Any], None], /) -> None:
         ...
 
-    def tx_color(self, cmd: int, data: _BufferType, start_x: int, start_y: int, end_x: int, end_y: int, /) -> None:
+    def tx_color(self, cmd: int, data: _BufferType, start_x: int, start_y: int, end_x: int, end_y: int, rotation: int, last_update: bool, /) -> None:
         ...
 
     def tx_param(self, cmd: int, data: _BufferType, /) -> None:
@@ -363,6 +349,13 @@ class I80Bus:
 
     def allocate_framebuffer(self, size: int, caps: int, /) -> Union[None, memoryview]:
         ...
+
+    def free_framebuffer(self, framebuffer: memoryview, /) -> None:
+        ...
+
+
+def _pump_main_thread() -> None:
+    ...
 
 
 del Any

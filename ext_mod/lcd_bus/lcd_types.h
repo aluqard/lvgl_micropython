@@ -1,3 +1,5 @@
+// Copyright (c) 2024 - 2025 Kevin G. Schlosser
+
 #ifndef _LCD_TYPES_H_
     #define _LCD_TYPES_H_
 
@@ -11,6 +13,8 @@
     typedef struct _lcd_panel_io_t lcd_panel_io_t;
 
     #ifdef ESP_IDF_VERSION
+        #include "sdkconfig.h"
+
         // esp-idf includes
         #include "esp_lcd_panel_io.h"
 
@@ -22,13 +26,13 @@
         #define LCD_ERR_INVALID_SIZE   0x104
         #define LCD_ERR_NOT_SUPPORTED  0x106
 
-
         typedef int mp_lcd_err_t;
 
         void cb_isr(mp_obj_t cb);
         bool bus_trans_done_cb(esp_lcd_panel_io_handle_t panel_io, esp_lcd_panel_io_event_data_t *edata, void *user_ctx);
 
     #else
+
         typedef enum {
             LCD_OK = 0,
             LCD_FAIL = -1,
@@ -42,6 +46,12 @@
         bool bus_trans_done_cb(lcd_panel_io_t *panel_io, void *edata, void *user_ctx);
     #endif
 
+    #if CONFIG_LCD_ENABLE_DEBUG_LOG
+        #define LCD_DEBUG_PRINT(...) mp_printf(&mp_plat_print, __VA_ARGS__);
+    #else
+        #define LCD_DEBUG_PRINT(...)
+    #endif
+
     struct _lcd_panel_io_t {
         mp_lcd_err_t (*get_lane_count)(mp_obj_t obj, uint8_t *lane_count);
         mp_lcd_err_t (*init)(mp_obj_t obj, uint16_t width, uint16_t height, uint8_t bpp, uint32_t buffer_size, bool rgb565_byte_swap, uint8_t cmd_bits, uint8_t param_bits);
@@ -52,9 +62,9 @@
         mp_obj_t (*free_framebuffer)(mp_obj_t obj, mp_obj_t buf);
         mp_lcd_err_t (*del)(mp_obj_t obj);
 
-        #ifdef ESP_IDF_VERSION
-            esp_lcd_panel_io_handle_t panel_io;
-        #endif
+    #ifdef ESP_IDF_VERSION
+        esp_lcd_panel_io_handle_t panel_io;
+    #endif
     };
 
     // typedef struct lcd_panel_io_t *lcd_panel_io_handle_t; /*!< Type of LCD panel IO handle */
@@ -74,8 +84,14 @@
 
         mp_obj_t callback;
 
+    #ifdef ESP_IDF_VERSION
+        mp_obj_array_t *view1;
+        mp_obj_array_t *view2;
+    #else
         void *buf1;
         void *buf2;
+    #endif
+
         uint32_t buffer_flags;
 
         bool trans_done;

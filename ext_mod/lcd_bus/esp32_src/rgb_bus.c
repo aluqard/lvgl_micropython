@@ -1,3 +1,6 @@
+// Copyright (c) 2024 - 2025 Kevin G. Schlosser
+
+
 #include "soc/soc_caps.h"
 
 #if SOC_LCD_RGB_SUPPORTED
@@ -25,52 +28,17 @@
     #include "py/runtime.h"
     #include "py/objarray.h"
     #include "py/binary.h"
+    #include "py/objint.h"
+    #include "py/objstr.h"
+    #include "py/objtype.h"
+    #include "py/objexcept.h"
+
+    #include "rgb565_dither.h"
 
     // stdlib includes
     #include <string.h>
 
     #define DEFAULT_STACK_SIZE    (5 * 1024)
-
-
-    typedef struct {
-        esp_lcd_panel_t base;  // Base class of generic lcd panel
-        int panel_id;          // LCD panel ID
-        lcd_hal_context_t hal; // Hal layer object
-        size_t data_width;     // Number of data lines
-        size_t fb_bits_per_pixel; // Frame buffer color depth, in bpp
-        size_t num_fbs;           // Number of frame buffers
-        size_t output_bits_per_pixel; // Color depth seen from the output data line. Default to fb_bits_per_pixel, but can be changed by YUV-RGB conversion
-        size_t sram_trans_align;  // Alignment for framebuffer that allocated in SRAM
-        size_t psram_trans_align; // Alignment for framebuffer that allocated in PSRAM
-        int disp_gpio_num;     // Display control GPIO, which is used to perform action like "disp_off"
-        intr_handle_t intr;    // LCD peripheral interrupt handle
-        esp_pm_lock_handle_t pm_lock; // Power management lock
-        size_t num_dma_nodes;  // Number of DMA descriptors that used to carry the frame buffer
-        uint8_t *fbs[3]; // Frame buffers
-        uint8_t cur_fb_index;  // Current frame buffer index
-        uint8_t bb_fb_index;  // Current frame buffer index which used by bounce buffer
-    } rgb_panel_t;
-
-
-    static bool rgb_bus_trans_done_cb(esp_lcd_panel_handle_t panel, const esp_lcd_rgb_panel_event_data_t *edata, void *user_ctx)
-    {
-        LCD_UNUSED(edata);
-        LCD_UNUSED(panel);
-        // rgb_panel_t *rgb_panel = __containerof(panel, rgb_panel_t, base);
-        mp_lcd_rgb_bus_obj_t *self = (mp_lcd_rgb_bus_obj_t *)user_ctx;
-
-        if (rgb_bus_event_isset_from_isr(&self->swap_bufs)) {
-            rgb_bus_event_clear_from_isr(&self->swap_bufs);
-            uint8_t *idle_fb = self->idle_fb;
-            self->idle_fb = self->active_fb;
-            self->active_fb = idle_fb;
-            rgb_bus_lock_release_from_isr(&self->swap_lock);
-        }
-
-        return false;
-    }
-
-    esp_lcd_rgb_panel_event_callbacks_t callbacks = { .on_vsync = rgb_bus_trans_done_cb };
 
     mp_lcd_err_t rgb_del(mp_obj_t obj);
     mp_lcd_err_t rgb_init(mp_obj_t obj, uint16_t width, uint16_t height, uint8_t bpp, uint32_t buffer_size, bool rgb565_byte_swap, uint8_t cmd_bits, uint8_t param_bits);
@@ -78,8 +46,26 @@
     mp_lcd_err_t rgb_rx_param(mp_obj_t obj, int lcd_cmd, void *param, size_t param_size);
     mp_lcd_err_t rgb_tx_param(mp_obj_t obj, int lcd_cmd, void *param, size_t param_size);
     mp_lcd_err_t rgb_tx_color(mp_obj_t obj, int lcd_cmd, void *color, size_t color_size, int x_start, int y_start, int x_end, int y_end, uint8_t rotation, bool last_update);
-    mp_obj_t rgb_allocate_framebuffer(mp_obj_t obj, uint32_t size, uint32_t caps);
-    mp_obj_t rgb_free_framebuffer(mp_obj_t obj, mp_obj_t buf);
+
+    static uint8_t rgb_bus_count = 0;
+    static mp_lcd_rgb_bus_obj_t **rgb_bus_objs;
+
+
+    void mp_lcd_rgb_bus_deinit_all(void)
+    {
+        // we need to copy the existing array to a new one so the order doesn't
+        // get all mucked up when objects get removed.
+        mp_lcd_rgb_bus_obj_t *objs[rgb_bus_count];
+
+        for (uint8_t i=0;i<rgb_bus_count;i++) {
+            objs[i] = rgb_bus_objs[i];
+        }
+
+        for (uint8_t i=0;i<rgb_bus_count;i++) {
+            rgb_del(MP_OBJ_FROM_PTR(objs[i]));
+        }
+    }
+
 
     mp_obj_t mp_lcd_rgb_bus_make_new(const mp_obj_type_t *type, size_t n_args, size_t n_kw, const mp_obj_t *all_args)
     {
@@ -117,6 +103,7 @@
             ARG_pclk_idle_high,
             ARG_pclk_active_low,
             ARG_refresh_on_demand,
+            ARG_rgb565_dither
         };
 
         const mp_arg_t allowed_args[] = {
@@ -153,6 +140,7 @@
             { MP_QSTR_pclk_idle_high,     MP_ARG_BOOL | MP_ARG_KW_ONLY, { .u_bool = false  } },
             { MP_QSTR_pclk_active_low,    MP_ARG_BOOL | MP_ARG_KW_ONLY, { .u_bool = false  } },
             { MP_QSTR_refresh_on_demand,  MP_ARG_BOOL | MP_ARG_KW_ONLY, { .u_bool = false  } },
+            { MP_QSTR_rgb565_dither,      MP_ARG_BOOL | MP_ARG_KW_ONLY, { .u_bool = false  } },
         };
 
         mp_arg_val_t args[MP_ARRAY_SIZE(allowed_args)];
@@ -163,6 +151,8 @@
         self->base.type = &mp_lcd_rgb_bus_type;
 
         self->callback = mp_const_none;
+
+        self->rgb565_dither = (uint8_t)args[ARG_rgb565_dither].u_bool;
 
         self->bus_config.pclk_hz = (uint32_t)args[ARG_freq].u_int;
         self->bus_config.hsync_pulse_width = (uint32_t)args[ARG_hsync_pulse_width].u_int;
@@ -215,55 +205,51 @@
 
         self->panel_io_config.data_width = (size_t) i;
 
-    #if CONFIG_LCD_ENABLE_DEBUG_LOG
-        printf("pclk_hz=%lu\n", self->bus_config.pclk_hz);
-        printf("hsync_pulse_width=%lu\n", self->bus_config.hsync_pulse_width);
-        printf("hsync_back_porch=%lu\n", self->bus_config.hsync_back_porch);
-        printf("hsync_front_porch=%lu\n", self->bus_config.hsync_front_porch);
-        printf("vsync_pulse_width=%lu\n", self->bus_config.vsync_pulse_width);
-        printf("vsync_back_porch=%lu\n", self->bus_config.vsync_back_porch);
-        printf("vsync_front_porch=%lu\n", self->bus_config.vsync_front_porch);
-        printf("hsync_idle_low=%d\n", self->bus_config.flags.hsync_idle_low);
-        printf("vsync_idle_low=%d\n", self->bus_config.flags.vsync_idle_low);
-        printf("de_idle_high=%d\n", self->bus_config.flags.de_idle_high);
-        printf("pclk_active_neg=%d\n", self->bus_config.flags.pclk_active_neg);
-        printf("pclk_idle_high=%d\n", self->bus_config.flags.pclk_idle_high);
-        printf("clk_src=%d\n", self->panel_io_config.clk_src);
-        printf("hsync_gpio_num=%d\n", self->panel_io_config.hsync_gpio_num);
-        printf("vsync_gpio_num=%d\n", self->panel_io_config.vsync_gpio_num);
-        printf("de_gpio_num=%d\n", self->panel_io_config.de_gpio_num);
-        printf("pclk_gpio_num=%d\n", self->panel_io_config.pclk_gpio_num);
-        printf("data_gpio_nums[0]=%d\n", self->panel_io_config.data_gpio_nums[0]);
-        printf("data_gpio_nums[1]=%d\n", self->panel_io_config.data_gpio_nums[1]);
-        printf("data_gpio_nums[2]=%d\n", self->panel_io_config.data_gpio_nums[2]);
-        printf("data_gpio_nums[3]=%d\n", self->panel_io_config.data_gpio_nums[3]);
-        printf("data_gpio_nums[4]=%d\n", self->panel_io_config.data_gpio_nums[4]);
-        printf("data_gpio_nums[5]=%d\n", self->panel_io_config.data_gpio_nums[5]);
-        printf("data_gpio_nums[6]=%d\n", self->panel_io_config.data_gpio_nums[6]);
-        printf("data_gpio_nums[7]=%d\n", self->panel_io_config.data_gpio_nums[7]);
-        printf("data_gpio_nums[8]=%d\n", self->panel_io_config.data_gpio_nums[8]);
-        printf("data_gpio_nums[9]=%d\n", self->panel_io_config.data_gpio_nums[9]);
-        printf("data_gpio_nums[10]=%d\n", self->panel_io_config.data_gpio_nums[10]);
-        printf("data_gpio_nums[11]=%d\n", self->panel_io_config.data_gpio_nums[11]);
-        printf("data_gpio_nums[12]=%d\n", self->panel_io_config.data_gpio_nums[12]);
-        printf("data_gpio_nums[13]=%d\n", self->panel_io_config.data_gpio_nums[13]);
-        printf("data_gpio_nums[14]=%d\n", self->panel_io_config.data_gpio_nums[14]);
-        printf("data_gpio_nums[15]=%d\n", self->panel_io_config.data_gpio_nums[15]);
-        printf("sram_trans_align=%d\n", self->panel_io_config.sram_trans_align);
-        printf("psram_trans_align=%d\n", self->panel_io_config.psram_trans_align);
-        printf("refresh_on_demand=%d\n", self->panel_io_config.flags.refresh_on_demand);
-        printf("fb_in_psram=%d\n", self->panel_io_config.flags.fb_in_psram);
-        printf("double_fb=%d\n", self->panel_io_config.flags.double_fb);
-        printf("data_width=%d\n", self->panel_io_config.data_width);
-    #endif
+        LCD_DEBUG_PRINT("pclk_hz=%lu\n", self->bus_config.pclk_hz)
+        LCD_DEBUG_PRINT("hsync_pulse_width=%lu\n", self->bus_config.hsync_pulse_width)
+        LCD_DEBUG_PRINT("hsync_back_porch=%lu\n", self->bus_config.hsync_back_porch)
+        LCD_DEBUG_PRINT("hsync_front_porch=%lu\n", self->bus_config.hsync_front_porch)
+        LCD_DEBUG_PRINT("vsync_pulse_width=%lu\n", self->bus_config.vsync_pulse_width)
+        LCD_DEBUG_PRINT("vsync_back_porch=%lu\n", self->bus_config.vsync_back_porch)
+        LCD_DEBUG_PRINT("vsync_front_porch=%lu\n", self->bus_config.vsync_front_porch)
+        LCD_DEBUG_PRINT("hsync_idle_low=%d\n", self->bus_config.flags.hsync_idle_low)
+        LCD_DEBUG_PRINT("vsync_idle_low=%d\n", self->bus_config.flags.vsync_idle_low)
+        LCD_DEBUG_PRINT("de_idle_high=%d\n", self->bus_config.flags.de_idle_high)
+        LCD_DEBUG_PRINT("pclk_active_neg=%d\n", self->bus_config.flags.pclk_active_neg)
+        LCD_DEBUG_PRINT("pclk_idle_high=%d\n", self->bus_config.flags.pclk_idle_high)
+        LCD_DEBUG_PRINT("clk_src=%d\n", self->panel_io_config.clk_src)
+        LCD_DEBUG_PRINT("hsync_gpio_num=%d\n", self->panel_io_config.hsync_gpio_num)
+        LCD_DEBUG_PRINT("vsync_gpio_num=%d\n", self->panel_io_config.vsync_gpio_num)
+        LCD_DEBUG_PRINT("de_gpio_num=%d\n", self->panel_io_config.de_gpio_num)
+        LCD_DEBUG_PRINT("pclk_gpio_num=%d\n", self->panel_io_config.pclk_gpio_num)
+        LCD_DEBUG_PRINT("data_gpio_nums[0]=%d\n", self->panel_io_config.data_gpio_nums[0])
+        LCD_DEBUG_PRINT("data_gpio_nums[1]=%d\n", self->panel_io_config.data_gpio_nums[1])
+        LCD_DEBUG_PRINT("data_gpio_nums[2]=%d\n", self->panel_io_config.data_gpio_nums[2])
+        LCD_DEBUG_PRINT("data_gpio_nums[3]=%d\n", self->panel_io_config.data_gpio_nums[3])
+        LCD_DEBUG_PRINT("data_gpio_nums[4]=%d\n", self->panel_io_config.data_gpio_nums[4])
+        LCD_DEBUG_PRINT("data_gpio_nums[5]=%d\n", self->panel_io_config.data_gpio_nums[5])
+        LCD_DEBUG_PRINT("data_gpio_nums[6]=%d\n", self->panel_io_config.data_gpio_nums[6])
+        LCD_DEBUG_PRINT("data_gpio_nums[7]=%d\n", self->panel_io_config.data_gpio_nums[7])
+        LCD_DEBUG_PRINT("data_gpio_nums[8]=%d\n", self->panel_io_config.data_gpio_nums[8])
+        LCD_DEBUG_PRINT("data_gpio_nums[9]=%d\n", self->panel_io_config.data_gpio_nums[9])
+        LCD_DEBUG_PRINT("data_gpio_nums[10]=%d\n", self->panel_io_config.data_gpio_nums[10])
+        LCD_DEBUG_PRINT("data_gpio_nums[11]=%d\n", self->panel_io_config.data_gpio_nums[11])
+        LCD_DEBUG_PRINT("data_gpio_nums[12]=%d\n", self->panel_io_config.data_gpio_nums[12])
+        LCD_DEBUG_PRINT("data_gpio_nums[13]=%d\n", self->panel_io_config.data_gpio_nums[13])
+        LCD_DEBUG_PRINT("data_gpio_nums[14]=%d\n", self->panel_io_config.data_gpio_nums[14])
+        LCD_DEBUG_PRINT("data_gpio_nums[15]=%d\n", self->panel_io_config.data_gpio_nums[15])
+        LCD_DEBUG_PRINT("sram_trans_align=%d\n", self->panel_io_config.sram_trans_align)
+        LCD_DEBUG_PRINT("psram_trans_align=%d\n", self->panel_io_config.psram_trans_align)
+        LCD_DEBUG_PRINT("refresh_on_demand=%d\n", self->panel_io_config.flags.refresh_on_demand)
+        LCD_DEBUG_PRINT("fb_in_psram=%d\n", self->panel_io_config.flags.fb_in_psram)
+        LCD_DEBUG_PRINT("double_fb=%d\n", self->panel_io_config.flags.double_fb)
+        LCD_DEBUG_PRINT("data_width=%d\n", self->panel_io_config.data_width)
 
         self->panel_io_handle.get_lane_count = &rgb_get_lane_count;
         self->panel_io_handle.del = &rgb_del;
         self->panel_io_handle.rx_param = &rgb_rx_param;
         self->panel_io_handle.tx_param = &rgb_tx_param;
         self->panel_io_handle.tx_color = &rgb_tx_color;
-        self->panel_io_handle.allocate_framebuffer = &rgb_allocate_framebuffer;
-        self->panel_io_handle.free_framebuffer = &rgb_free_framebuffer;
         self->panel_io_handle.init = &rgb_init;
 
         return MP_OBJ_FROM_PTR(self);
@@ -271,28 +257,76 @@
 
     mp_lcd_err_t rgb_del(mp_obj_t obj)
     {
+        LCD_DEBUG_PRINT("rgb_del(self)\n")
+
         mp_lcd_rgb_bus_obj_t *self = (mp_lcd_rgb_bus_obj_t *)obj;
 
-    #if CONFIG_LCD_ENABLE_DEBUG_LOG
-        printf("rgb_del(self)\n");
-    #endif
+        if (self->panel_handle != NULL) {
+            rgb_bus_lock_acquire(&self->tx_color_lock, -1);
+            self->partial_buf = NULL;
+            rgb_bus_event_set(&self->copy_task_exit);
+            rgb_bus_lock_release(&self->copy_lock);
+            rgb_bus_lock_release(&self->tx_color_lock);
 
-        mp_lcd_err_t ret = esp_lcd_panel_del(self->panel_handle);
-        return ret;
+            mp_lcd_err_t ret = esp_lcd_panel_del(self->panel_handle);
+
+            if (ret != 0) {
+                mp_raise_msg_varg(&mp_type_ValueError, MP_ERROR_TEXT("%d(esp_lcd_panel_del)"), ret);
+            }
+            self->panel_handle = NULL;
+
+            rgb_bus_lock_delete(&self->copy_lock);
+            rgb_bus_lock_delete(&self->tx_color_lock);
+
+            rgb_bus_event_clear(&self->swap_bufs);
+            rgb_bus_event_delete(&self->swap_bufs);
+            rgb_bus_event_delete(&self->copy_task_exit);
+
+            if (self->view1 != NULL) {
+                heap_caps_free(self->view1->items);
+                self->view1->items = NULL;
+                self->view1->len = 0;
+                self->view1 = NULL;
+                LCD_DEBUG_PRINT("rgb_free_framebuffer(self, buf=1)\n")
+            }
+
+            if (self->view2 != NULL) {
+                heap_caps_free(self->view2->items);
+                self->view2->items = NULL;
+                self->view2->len = 0;
+                self->view2 = NULL;
+                LCD_DEBUG_PRINT("rgb_free_framebuffer(self, buf=1)\n")
+            }
+
+            uint8_t i = 0;
+
+            for (;i<rgb_bus_count;i++) {
+                if (rgb_bus_objs[i] == self) {
+                    rgb_bus_objs[i] = NULL;
+                    break;
+                }
+            }
+
+            for (uint8_t j=i + 1;j<rgb_bus_count;j++) {
+                rgb_bus_objs[j - i + 1] = rgb_bus_objs[j];
+            }
+
+            rgb_bus_count--;
+            rgb_bus_objs = m_realloc(rgb_bus_objs, rgb_bus_count * sizeof(mp_lcd_rgb_bus_obj_t *));
+            return ret;
+        } else {
+            return LCD_FAIL;
+        }
     }
 
     mp_lcd_err_t rgb_rx_param(mp_obj_t obj, int lcd_cmd, void *param, size_t param_size)
     {
         LCD_UNUSED(obj);
         LCD_UNUSED(param);
-
-    #if CONFIG_LCD_ENABLE_DEBUG_LOG
-        printf("rgb_rx_param(self, lcd_cmd=%d, param, param_size=%d)\n", lcd_cmd, param_size);
-    #else
         LCD_UNUSED(lcd_cmd);
         LCD_UNUSED(param_size);
-    #endif
 
+        LCD_DEBUG_PRINT("rgb_rx_param(self, lcd_cmd=%d, param, param_size=%d)\n", lcd_cmd, param_size)
         return LCD_OK;
     }
 
@@ -300,97 +334,24 @@
     {
         LCD_UNUSED(obj);
         LCD_UNUSED(param);
-
-    #if CONFIG_LCD_ENABLE_DEBUG_LOG
-        printf("rgb_tx_param(self, lcd_cmd=%d, param, param_size=%d)\n", lcd_cmd, param_size);
-    #else
         LCD_UNUSED(lcd_cmd);
         LCD_UNUSED(param_size);
-    #endif
+        LCD_DEBUG_PRINT("rgb_tx_param(self, lcd_cmd=%d, param, param_size=%d)\n", lcd_cmd, param_size)
 
         return LCD_OK;
     }
 
-    mp_obj_t rgb_free_framebuffer(mp_obj_t obj, mp_obj_t buf)
-    {
-        mp_lcd_rgb_bus_obj_t *self = (mp_lcd_rgb_bus_obj_t *)obj;
-
-        if (self->panel_handle != NULL) {
-            mp_raise_msg(&mp_type_ValueError, MP_ERROR_TEXT("Unable to free buffer"));
-            return mp_const_none;
-        }
-
-        mp_obj_array_t *array_buf = (mp_obj_array_t *)MP_OBJ_TO_PTR(buf);
-        void *item_buf = array_buf->items;
-
-        if (array_buf == self->view1) {
-            heap_caps_free(item_buf);
-            self->view1 = NULL;
-        #if CONFIG_LCD_ENABLE_DEBUG_LOG
-            printf("rgb_free_framebuffer(self, buf=1)\n");
-        #endif
-        } else if (array_buf == self->view2) {
-            heap_caps_free(item_buf);
-            self->view2 = NULL;
-        #if CONFIG_LCD_ENABLE_DEBUG_LOG
-            printf("rgb_free_framebuffer(self, buf=2)\n");
-        #endif
-        } else {
-            mp_raise_msg(&mp_type_MemoryError, MP_ERROR_TEXT("No matching buffer found"));
-        }
-        return mp_const_none;
-    }
-
-    mp_obj_t rgb_allocate_framebuffer(mp_obj_t obj, uint32_t size, uint32_t caps)
-    {
-    #if CONFIG_LCD_ENABLE_DEBUG_LOG
-        printf("rgb_allocate_framebuffer(self, size=%lu, caps=%lu)\n", size, caps);
-    #endif
-
-        mp_lcd_rgb_bus_obj_t *self = (mp_lcd_rgb_bus_obj_t *)obj;
-
-        void *buf = heap_caps_calloc(1, size, caps);
-
-        if (buf == NULL) {
-           mp_raise_msg_varg(
-               &mp_type_MemoryError,
-               MP_ERROR_TEXT("Not enough memory available (%d)"),
-               size
-           );
-        }
-
-        mp_obj_array_t *view = MP_OBJ_TO_PTR(mp_obj_new_memoryview(BYTEARRAY_TYPECODE, size, buf));
-        view->typecode |= 0x80; // used to indicate writable buffer
-
-        if (self->view1 == NULL) {
-            self->view1 = view;
-        } else if (self->view2 == NULL) {
-            self->view2 = view;
-        } else {
-            heap_caps_free(buf);
-            mp_raise_msg(&mp_type_MemoryError, MP_ERROR_TEXT("There is a maximum of 2 frame buffers allowed"));
-            return mp_const_none;
-        }
-
-        return MP_OBJ_FROM_PTR(view);
-    }
 
     mp_lcd_err_t rgb_init(mp_obj_t obj, uint16_t width, uint16_t height, uint8_t bpp, uint32_t buffer_size, bool rgb565_byte_swap, uint8_t cmd_bits, uint8_t param_bits)
     {
         LCD_UNUSED(cmd_bits);
         LCD_UNUSED(param_bits);
-    #if CONFIG_LCD_ENABLE_DEBUG_LOG
-        printf("rgb_init(self, width=%i, height=%i, bpp=%d, buffer_size=%lu, rgb565_byte_swap=%d)\n", width, height, bpp, buffer_size, rgb565_byte_swap);
-    #endif
+
+        LCD_DEBUG_PRINT("rgb_init(self, width=%i, height=%i, bpp=%d, buffer_size=%lu, rgb565_byte_swap=%d)\n", width, height, bpp, buffer_size, rgb565_byte_swap)
+
         mp_lcd_rgb_bus_obj_t *self = (mp_lcd_rgb_bus_obj_t *)obj;
 
-        if (buffer_size != self->buffer_size) {
-            mp_raise_msg_varg(
-                &mp_type_ValueError,
-                MP_ERROR_TEXT("Frame buffer size is not correct for the display size (%d)"),
-                buffer_size
-            );
-        }
+        if (bpp != 16 && self->rgb565_dither) self->rgb565_dither = 0;
 
         if (bpp == 16 && rgb565_byte_swap) {
             /*
@@ -429,56 +390,46 @@
         self->panel_io_config.flags.fb_in_psram = 1;
         self->panel_io_config.flags.double_fb = 1;
 
-    #if CONFIG_LCD_ENABLE_DEBUG_LOG
-        printf("h_res=%lu\n", self->panel_io_config.timings.h_res);
-        printf("v_res=%lu\n", self->panel_io_config.timings.v_res);
-        printf("bits_per_pixel=%d\n", self->panel_io_config.bits_per_pixel);
-        printf("bounce_buffer_size_px=%d\n", self->panel_io_config.bounce_buffer_size_px);
-        printf("rgb565_byte_swap=%d\n", self->rgb565_byte_swap);
-    #endif
-        mp_lcd_err_t ret = esp_lcd_new_rgb_panel(&self->panel_io_config, &self->panel_handle);
-        if (ret != 0) {
-            mp_raise_msg_varg(&mp_type_ValueError, MP_ERROR_TEXT("%d(esp_lcd_new_rgb_panel)"), ret);
-            return ret;
-        }
-
-        if (self->panel_io_config.flags.double_fb) {
-            ret = esp_lcd_rgb_panel_register_event_callbacks(self->panel_handle, &callbacks, self);
-            if (ret != 0) {
-                mp_raise_msg_varg(&mp_type_ValueError, MP_ERROR_TEXT("%d(esp_lcd_rgb_panel_register_event_callbacks)"), ret);
-                return ret;
-            }
-        }
-
-        ret = esp_lcd_panel_reset(self->panel_handle);
-        if (ret != 0) {
-            mp_raise_msg_varg(&mp_type_ValueError, MP_ERROR_TEXT("%d(esp_lcd_panel_reset)"), ret);
-            return ret;
-        }
-
-        ret = esp_lcd_panel_init(self->panel_handle);
-        if (ret != 0) {
-            mp_raise_msg_varg(&mp_type_ValueError, MP_ERROR_TEXT("%d(esp_lcd_panel_init)"), ret);
-            return ret;
-        }
-
-        rgb_panel_t *rgb_panel = __containerof((esp_lcd_panel_t *)self->panel_handle, rgb_panel_t, base);
-
-        self->active_fb = rgb_panel->fbs[0];
-        self->idle_fb = rgb_panel->fbs[1];
-
         rgb_bus_lock_init(&self->copy_lock);
+        rgb_bus_lock_init(&self->tx_color_lock);
         rgb_bus_event_init(&self->copy_task_exit);
-        rgb_bus_event_init(&self->last_update);
-        rgb_bus_event_init(&self->partial_copy);
         rgb_bus_event_init(&self->swap_bufs);
-        rgb_bus_lock_init(&self->swap_lock);
+        rgb_bus_event_set(&self->swap_bufs);
+        rgb_bus_lock_init(&self->init_lock);
+        rgb_bus_lock_acquire(&self->init_lock, -1);
+
+
+    #if LCD_RGB_OPTIMUM_FB_SIZE
+        rgb_bus_lock_init(&self->optimum_fb.lock);
+        rgb_bus_lock_acquire(&self->optimum_fb.lock, -1);
+        self->optimum_fb.samples = (uint16_t *)malloc(sizeof(uint16_t) * 255);
+        self->optimum_fb.curr_index = 254;
+    #endif
+
+        LCD_DEBUG_PRINT("h_res=%lu\n", self->panel_io_config.timings.h_res)
+        LCD_DEBUG_PRINT("v_res=%lu\n", self->panel_io_config.timings.v_res)
+        LCD_DEBUG_PRINT("bits_per_pixel=%d\n", self->panel_io_config.bits_per_pixel)
+        LCD_DEBUG_PRINT("rgb565_byte_swap=%d\n", self->rgb565_byte_swap)
 
         xTaskCreatePinnedToCore(
                 rgb_bus_copy_task, "rgb_task", DEFAULT_STACK_SIZE / sizeof(StackType_t),
                 self, ESP_TASK_PRIO_MAX - 1, &self->copy_task_handle, 0);
 
-        return LCD_OK;
+        rgb_bus_lock_acquire(&self->init_lock, -1);
+        rgb_bus_lock_release(&self->init_lock);
+        rgb_bus_lock_delete(&self->init_lock);
+
+        if (self->init_err != LCD_OK) {
+            mp_raise_msg_varg(&mp_type_ValueError, self->init_err_msg, self->init_err);
+            return self->init_err;
+        } else {
+            // add the new bus ONLY after successfull initilization of the bus
+            rgb_bus_count++;
+            rgb_bus_objs = m_realloc(rgb_bus_objs, rgb_bus_count * sizeof(mp_lcd_rgb_bus_obj_t *));
+            rgb_bus_objs[rgb_bus_count - 1] = self;
+
+            return LCD_OK;
+        }
     }
 
 
@@ -486,9 +437,8 @@
     {
         mp_lcd_rgb_bus_obj_t *self = (mp_lcd_rgb_bus_obj_t *)obj;
         *lane_count = (uint8_t)self->panel_io_config.data_width;
-    #if CONFIG_LCD_ENABLE_DEBUG_LOG
-        printf("rgb_get_lane_count(self)-> %d\n", (uint8_t)self->panel_io_config.data_width);
-    #endif
+
+        LCD_DEBUG_PRINT("rgb_get_lane_count(self)-> %d\n", (uint8_t)self->panel_io_config.data_width)
 
         return LCD_OK;
     }
@@ -496,12 +446,14 @@
 
     mp_lcd_err_t rgb_tx_color(mp_obj_t obj, int lcd_cmd, void *color, size_t color_size, int x_start, int y_start, int x_end, int y_end, uint8_t rotation, bool last_update)
     {
-    #if CONFIG_LCD_ENABLE_DEBUG_LOG
-        printf("rgb_tx_color(self, lcd_cmd=%d, color, color_size=%d, x_start=%d, y_start=%d, x_end=%d, y_end=%d)\n", lcd_cmd, color_size, x_start, y_start, x_end, y_end);
-    #endif
+        LCD_DEBUG_PRINT("rgb_tx_color(self, lcd_cmd=%d, color, color_size=%d, x_start=%d, y_start=%d, x_end=%d, y_end=%d)\n", lcd_cmd, color_size, x_start, y_start, x_end, y_end)
+        LCD_UNUSED(color_size);
 
         mp_lcd_rgb_bus_obj_t *self = (mp_lcd_rgb_bus_obj_t *)obj;
+        
+        rgb_bus_lock_acquire(&self->tx_color_lock, -1);
 
+        self->last_update = (uint8_t)last_update;
         self->partial_buf = (uint8_t *)color;
         self->x_start = x_start;
         self->y_start = y_start;
@@ -509,20 +461,81 @@
         self->y_end = y_end;
         self->rotation = rotation;
 
-        if (last_update) rgb_bus_event_set(&self->last_update);
-
         rgb_bus_lock_release(&self->copy_lock);
+//        if (self->callback != mp_const_none) {
+//            mp_call_function_n_kw(self->callback, 0, 0, NULL);
+//        }
 
         return LCD_OK;
     }
+
+#if LCD_RGB_OPTIMUM_FB_SIZE
+
+    static void rgb_bus_attr(mp_obj_t self_in, qstr attr, mp_obj_t *dest)
+    {
+        mp_lcd_rgb_bus_obj_t *self = MP_OBJ_TO_PTR(self_in);
+
+        if (attr == MP_QSTR_avg_flushes_per_update) {
+            if (dest[0] == MP_OBJ_NULL) {
+                uint32_t total = 0;
+
+                rgb_bus_lock_acquire(&self->optimum_fb.lock, -1);
+                for (uint8_t i=0;i<self->optimum_fb.sample_count;i++) {
+                    total += (uint32_t)self->optimum_fb.samples[i];
+                }
+
+                uint16_t avg = (uint16_t)(total / (uint32_t)self->optimum_fb.sample_count);
+
+                rgb_bus_lock_release(&self->optimum_fb.lock);
+
+                dest[0] = mp_obj_new_int_from_uint(avg);
+            } else if (dest[1]) {
+                uint16_t value = (uint16_t)mp_obj_get_int_truncated(dest[1]);
+
+                if (value == 0) {
+                    rgb_bus_lock_acquire(&self->optimum_fb.lock, -1);
+                    for (uint8_t i=0;i<self->optimum_fb.sample_count;i++) {
+                        self->optimum_fb.samples[i] = 0;
+                    }
+
+                    self->optimum_fb.sample_count = 0;
+                    self->optimum_fb.curr_index = 254;
+                    rgb_bus_lock_release(&self->optimum_fb.lock);
+
+                    dest[0] = MP_OBJ_NULL;
+                }
+            }
+        } else if (dest[0] == MP_OBJ_NULL) {
+            const mp_obj_type_t *type = mp_obj_get_type(self_in);
+            while (MP_OBJ_TYPE_HAS_SLOT(type, locals_dict)) {
+                // generic method lookup
+                // this is a lookup in the object (ie not class or type)
+                assert(MP_OBJ_TYPE_GET_SLOT(type, locals_dict)->base.type == &mp_type_dict); // MicroPython restriction, for now
+                mp_map_t *locals_map = &MP_OBJ_TYPE_GET_SLOT(type, locals_dict)->map;
+                mp_map_elem_t *elem = mp_map_lookup(locals_map, MP_OBJ_NEW_QSTR(attr), MP_MAP_LOOKUP);
+                if (elem != NULL) {
+                    mp_convert_member_lookup(self_in, type, elem->value, dest);
+                    break;
+                }
+                if (MP_OBJ_TYPE_GET_SLOT_OR_NULL(type, parent) == NULL) break;
+                // search parents
+                type = MP_OBJ_TYPE_GET_SLOT(type, parent);
+            }
+        }
+    }
+#endif
 
     MP_DEFINE_CONST_OBJ_TYPE(
         mp_lcd_rgb_bus_type,
         MP_QSTR_RGBBus,
         MP_TYPE_FLAG_NONE,
         make_new, mp_lcd_rgb_bus_make_new,
+    #if LCD_RGB_OPTIMUM_FB_SIZE
+        attr, rgb_bus_attr,
+    #endif
         locals_dict, (mp_obj_dict_t *)&mp_lcd_bus_locals_dict
     );
+
 #else
     #include "../common_src/rgb_bus.c"
 

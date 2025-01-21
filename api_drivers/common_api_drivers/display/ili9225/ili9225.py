@@ -1,3 +1,5 @@
+# Copyright (c) 2024 - 2025 Kevin G. Schlosser
+
 import display_driver_framework
 from micropython import const  # NOQA
 
@@ -70,7 +72,7 @@ class ILI9225(display_driver_framework.DisplayDriver):
 
         if self._initilized:
             if rotation <= 1:
-                value = int(not rotation)
+                rotation = int(not rotation)
 
             self._param_buf[0] = rotation
             self._param_buf[1] = 0x1C

@@ -1,3 +1,5 @@
+# Copyright (c) 2024 - 2025 Kevin G. Schlosser
+
 from micropython import const  # NOQA
 import display_driver_framework
 
@@ -43,4 +45,4 @@ class ST7735(display_driver_framework.DisplayDriver):
                 _MADCTL_MY | _MADCTL_MX,
                 _MADCTL_MV | _MADCTL_MX
             )
-        display_driver_framework.DisplayDriver.init(self, type)
+        display_driver_framework.DisplayDriver.init(self, type)  # NOQA

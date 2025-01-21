@@ -1,3 +1,5 @@
+# Copyright (c) 2024 - 2025 Kevin G. Schlosser
+
 import display_driver_framework
 
 
@@ -11,5 +13,3 @@ BYTE_ORDER_BGR = display_driver_framework.BYTE_ORDER_BGR
 
 class HX8357D(display_driver_framework.DisplayDriver):
     pass
-
-
