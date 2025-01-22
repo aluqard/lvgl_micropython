@@ -457,6 +457,16 @@ def get_micropython():
         with open(mkrules_path, 'wb') as f:
             f.write(data.encode('utf-8'))
 
+def copy_fonts():
+    cmd_ = [
+        'cp -R font/* lib/lvgl/src/font',
+    ]
+
+    print()
+    print('copying fonts')
+    result, _ = spawn(cmd_, spinner=True)
+    if result != 0:
+        sys.exit(result)
 
 def get_pycparser():
     cmd_ = [

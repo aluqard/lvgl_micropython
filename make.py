@@ -148,6 +148,12 @@ def get_submodules():
         os.path.join(SCRIPT_DIR, 'lib/lvgl/lvgl.h')
     ):
         builder.get_lvgl()
+
+    if os.path.exists(
+        os.path.join(SCRIPT_DIR, 'lib/lvgl/src/font')
+    ):
+        builder.copy_fonts()
+        
     if not os.path.exists(os.path.join(
         SCRIPT_DIR, 'lib/pycparser/pycparser')
     ):
