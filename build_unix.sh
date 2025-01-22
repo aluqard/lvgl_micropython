@@ -12,5 +12,13 @@ if [ ! -d micropython-ulab ]; then
  git clone https://github.com/v923z/micropython-ulab.git
 fi
 cd ..
+
+mkdir -p lib/lvgl/src/font
+
 cp -R font/* lib/lvgl/src/font
 python3 make.py unix clean DISPLAY=sdl_display INDEV=sdl_pointer
+
+cd build
+if [ -f lvgl_micropy_unix ]; then
+  sudo chmod +x lvgl_micropy_unix
+fi
