@@ -1,33 +1,7 @@
-from micropython import const
-import lcd_bus
-import sdl_pointer
-import task_handler
 import lvgl as lv
-import sdl_display
-import display_driver_framework
-import fs_driver
+import device
 
-_WIDTH = const(480)
-_HEIGHT = const(320)
-
-bus = lcd_bus.SDLBus(flags=0)
-buf1 = bus.allocate_framebuffer(_WIDTH * _HEIGHT * 4, 0)
-
-display = sdl_display.SDLDisplay(
-    data_bus=bus,
-    display_width=_WIDTH,
-    display_height=_HEIGHT,
-    frame_buffer1=buf1,
-    color_space=lv.COLOR_FORMAT.ARGB8888,
-    color_byte_order=display_driver_framework.BYTE_ORDER_BGR
-)
-display.init()
-
-mouse = sdl_pointer.SDLPointer()
-th = task_handler.TaskHandler(duration=5)
-
-fs_drv = lv.fs_drv_t()
-fs_driver.fs_register(fs_drv, 'D')
+d = device.DEVICE()
 
 def btn_cb(evt):
     code = evt.get_code()
