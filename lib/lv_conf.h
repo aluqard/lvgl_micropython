@@ -527,7 +527,34 @@ extern void *mp_lv_roots;
 /*Optionally declare custom fonts here.
  *You can use these fonts as default font too and they will be available globally.
  *E.g. #define LV_FONT_CUSTOM_DECLARE   LV_FONT_DECLARE(my_font_1) LV_FONT_DECLARE(my_font_2)*/
-#define LV_FONT_CUSTOM_DECLARE LV_FONT_DECLARE(lv_font_andalemono_16) LV_FONT_DECLARE(lv_font_awesome_12) LV_FONT_DECLARE(lv_font_awesome_14) LV_FONT_DECLARE(lv_font_awesome_18) LV_FONT_DECLARE(lv_font_awesome_24) LV_FONT_DECLARE(lv_font_awesome_36)
+#define LV_FONT_CUSTOM_DECLARE \
+LV_FONT_DECLARE(lv_font_andalemono_16) \
+LV_FONT_DECLARE(lv_font_awesome_12) \
+LV_FONT_DECLARE(lv_font_awesome_14) \
+LV_FONT_DECLARE(lv_font_awesome_18) \
+LV_FONT_DECLARE(lv_font_awesome_24) \
+LV_FONT_DECLARE(lv_font_awesome_36) \
+LV_FONT_DECLARE(lv_font_seg14_10) \
+LV_FONT_DECLARE(lv_font_seg14_12) \
+LV_FONT_DECLARE(lv_font_seg14_14) \
+LV_FONT_DECLARE(lv_font_seg14_16) \
+LV_FONT_DECLARE(lv_font_seg14_20) \
+LV_FONT_DECLARE(lv_font_seg14_24) \
+LV_FONT_DECLARE(lv_font_seg14_28) \
+LV_FONT_DECLARE(lv_font_seg14_32) \
+LV_FONT_DECLARE(lv_font_seg14_36) \
+LV_FONT_DECLARE(lv_font_seg14_bold_10) \
+LV_FONT_DECLARE(lv_font_seg14_bold_12) \
+LV_FONT_DECLARE(lv_font_seg14_bold_14) \
+LV_FONT_DECLARE(lv_font_seg14_bold_16) \
+LV_FONT_DECLARE(lv_font_seg14_bold_20) \
+LV_FONT_DECLARE(lv_font_seg14_bold_24) \
+LV_FONT_DECLARE(lv_font_seg14_bold_28) \
+LV_FONT_DECLARE(lv_font_seg14_bold_32) \
+LV_FONT_DECLARE(lv_font_seg14_bold_36) \
+LV_FONT_DECLARE(lv_font_seg14_bold_40) \
+LV_FONT_DECLARE(lv_font_seg14_bold_48) \
+LV_FONT_DECLARE(lv_font_seg14_bold_56) \
 
 /*Always set a default font*/
 #define LV_FONT_DEFAULT &lv_font_montserrat_14
