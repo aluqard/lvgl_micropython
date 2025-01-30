@@ -14,5 +14,4 @@ fi
 cd ..
 cp -R font/* lib/lvgl/src/font
 yes | cp -R boards/ESP32_WAVESHARE lib/micropython/ports/esp32/boards 
-#python3 make.py esp32 clean BOARD=ESP32_WAVESHARE BOARD_VARIANT=SPIRAM_OCT DISPLAY=st7789 INDEV=cst328 FROZEN_MANIFEST=/home/aluqard/lvgl_micropython_aluqard/lib/micropython/ports/esp32/boards/ESP32_WAVESHARE/manifest.py --usb-otg --dual-core-threads
-python3 make.py esp32 clean BOARD=ESP32_GENERIC_S3 DISPLAY=all INDEV=all --dual-core-threads --flash-size=16 --enable-cdc-repl=y
+python3 make.py esp32 clean BOARD=ESP32_WAVESHARE BOARD_VARIANT=SPIRAM_OCT DISPLAY=st7789 INDEV=cst328 FROZEN_MANIFEST=$(pwd)/lib/micropython/ports/esp32/boards/ESP32_WAVESHARE/manifest.py --dual-core-threads --enable-cdc-repl=y
