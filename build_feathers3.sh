@@ -16,6 +16,7 @@ fi
 
 git clone https://github.com/v923z/micropython-ulab.git
 cd ..
-cp -R font/* lib/lvgl/src/font
-yes | cp -R boards/UM_FEATHERS3 lib/micropython/ports/esp32/boards 
-python3 make.py esp32 clean BOARD=UM_FEATHERS3 BOARD_VARIANT=SPIRAM DISPLAY=all INDEV=all FROZEN_MANIFEST=$(pwd)/lib/micropython/ports/esp32/boards/UM_FEATHERS3/manifest.py --dual-core-threads --enable-cdc-repl=y
+#cp -R font/* lib/lvgl/src/font
+#yes | cp -R boards/UM_FEATHERS3/* lib/micropython/ports/esp32/boards/UM_FEATHERS3
+#python3 make.py esp32 clean BOARD=UM_FEATHERS3 BOARD_VARIANT=SPIRAM DISPLAY=all INDEV=all FROZEN_MANIFEST=$(pwd)/lib/micropython/ports/esp32/boards/UM_FEATHERS3/manifest.py --dual-core-threads --enable-cdc-repl=y
+python3 make.py esp32 clean BOARD=UM_FEATHERS3 DISPLAY=all INDEV=all --dual-core-threads --enable-cdc-repl=y

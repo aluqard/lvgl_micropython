@@ -468,6 +468,17 @@ def copy_fonts():
     if result != 0:
         sys.exit(result)
 
+def copy_board(target):
+    cmd_ = [
+        f'yes | cp -R boards/{target}/* lib/micropython/ports/esp32/boards/{target}',
+    ]
+
+    print()
+    print('copying board')
+    result, _ = spawn(cmd_, spinner=True)
+    if result != 0:
+        sys.exit(result)
+
 def get_pycparser():
     cmd_ = [
         'git',

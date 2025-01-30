@@ -153,6 +153,11 @@ def get_submodules():
         os.path.join(SCRIPT_DIR, 'lib/lvgl/src/font')
     ):
         builder.copy_fonts()
+
+    if os.path.exists(
+        os.path.join(SCRIPT_DIR, 'lib/micropython/ports/esp32/boards')
+    ):
+        builder.copy_board(board)
         
     if not os.path.exists(os.path.join(
         SCRIPT_DIR, 'lib/pycparser/pycparser')
