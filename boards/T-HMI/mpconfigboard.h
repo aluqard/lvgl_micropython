@@ -1,7 +1,10 @@
+#ifndef MICROPY_HW_BOARD_NAME
+// Can be set by mpconfigboard.cmake.
 #define MICROPY_HW_BOARD_NAME               "T-HMI"
+#endif
 #define MICROPY_HW_MCU_NAME                 "ESP32S3"
 #define MICROPY_PY_NETWORK_HOSTNAME_DEFAULT "mpy-ttgo-t-hmi"
-#define MICROPY_HW_SDMMC_SLOT_CONFIG() {\
+#define MICROPY_HW_SDMMC_SLOT_CONFIG() { \
     .clk = GPIO_NUM_12, \
     .cmd = GPIO_NUM_11, \
     .d0 = GPIO_NUM_13, \

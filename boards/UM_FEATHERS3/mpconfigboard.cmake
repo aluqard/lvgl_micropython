@@ -7,6 +7,7 @@ set(SDKCONFIG_DEFAULTS
     boards/sdkconfig.ble
     boards/sdkconfig.240mhz
     boards/sdkconfig.spiram_sx
+    boards/sdkconfig.spiram
     boards/UM_FEATHERS3/sdkconfig.board
 )
 
