@@ -12,6 +12,7 @@ if [ ! -d micropython-ulab ]; then
  git clone https://github.com/v923z/micropython-ulab.git
 fi
 cd ..
-cp -R font/* lib/lvgl/src/font
-yes | cp -R boards/ESP32_WAVESHARE lib/micropython/ports/esp32/boards 
-python3 make.py esp32 clean BOARD=ESP32_WAVESHARE BOARD_VARIANT=SPIRAM_OCT DISPLAY=st7789 INDEV=cst328 FROZEN_MANIFEST=$(pwd)/lib/micropython/ports/esp32/boards/ESP32_WAVESHARE/manifest.py --dual-core-threads --enable-cdc-repl=y
+
+#cp -R font/* lib/lvgl/src/font
+#yes | cp -R boards/ESP32_WAVESHARE lib/micropython/ports/esp32/boards 
+python3 make.py esp32 clean BOARD=ESP32_WAVESHARE DISPLAY=st7789 INDEV=cst328 FROZEN_MANIFEST=$(pwd)/lib/micropython/ports/esp32/boards/ESP32_WAVESHARE/manifest.py --dual-core-threads --enable-cdc-repl=y

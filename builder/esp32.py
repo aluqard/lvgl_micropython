@@ -565,6 +565,8 @@ def parse_args(extra_args, lv_cflags, brd):
         extra_args = esp32_args(extra_args)
     elif board == 'ESP32_GENERIC_S3':
         extra_args = esp32_s3_args(extra_args)
+
+    '''
     elif board == 'UM_FEATHERS3':
         extra_args = esp32_s3_args(extra_args)
     elif board == 'T-HMI':
@@ -575,6 +577,7 @@ def parse_args(extra_args, lv_cflags, brd):
         extra_args = esp32_s3_args(extra_args)
     elif board == 'ARDUINO_NANO_ESP32':
         extra_args = esp32_s3_args(extra_args)
+    '''
     
     extra_args = repl_args(extra_args)
 

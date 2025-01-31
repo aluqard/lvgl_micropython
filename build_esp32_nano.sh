@@ -17,4 +17,4 @@ fi
 git clone https://github.com/v923z/micropython-ulab.git
 cd ..
 cp -R font/* lib/lvgl/src/font
-python3 make.py esp32 clean BOARD=ARDUINO_NANO_ESP32 BOARD_VARIANT=SPIRAM_OCT DISPLAY=all INDEV=all --dual-core-threads --enable-cdc-repl=y
+python3 make.py esp32 clean BOARD=ARDUINO_NANO_ESP32 DISPLAY=all INDEV=all --dual-core-threads --enable-cdc-repl=y

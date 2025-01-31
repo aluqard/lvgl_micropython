@@ -468,9 +468,14 @@ def copy_fonts():
     if result != 0:
         sys.exit(result)
 
-def copy_board(target):
+def copy_board(board):
+
+    path = f'boards/{board}'
+    if not os.path.exists(path):
+        return
+    
     cmd_ = [
-        f'yes | cp -R boards/{target}/* lib/micropython/ports/esp32/boards/{target}',
+        f'mkdir -p $(pwd)/lib/micropython/ports/esp32/boards && cp -R $(pwd)/boards/{board} $(pwd)/lib/micropython/ports/esp32/boards',
     ]
 
     print()
