@@ -17,7 +17,7 @@ fi
 git clone https://github.com/v923z/micropython-ulab.git
 cd ..
 
-python3 make.py unix clean DISPLAY=sdl_display INDEV=sdl_pointer
+python3 make.py unix clean DISPLAY=sdl_display INDEV=sdl_pointer --heap-size=128000000
 
 cd build
 if [ -f lvgl_micropy_unix ]; then
