@@ -2,46 +2,16 @@
 
 import lvgl as lv  # NOQA
 import _indev_base
-import display_driver_framework
 
 
 class KeypadDriver(_indev_base.IndevBase):
+
     def __init__(self):  # NOQA
-        if not lv.is_initialized():
-            lv.init()
-
-        disp = lv.display_get_default()  # NOQA
-
-        if disp is None:
-            raise RuntimeError(
-                'the display driver must be initilized before the keypad driver'
-            )
-
-        self._disp_drv = disp
-
-        displays = display_driver_framework.DisplayDriver.get_displays()
-        for display in displays:
-            if display._disp_drv == disp:  # NOQA
-                self._py_disp_drv = display
-                break
-        else:
-            raise RuntimeError(
-                'Display driver needs to initilized before indev driver'
-            )
-
-        self._last_key = -1
-        self._current_state = self.RELEASED
-
-        indev_drv = lv.indev_create()
-        indev_drv.set_type(lv.INDEV_TYPE.KEYPAD)  # NOQA
-        indev_drv.set_read_cb(self._read)  # NOQA
-        indev_drv.set_driver_data(self)  # NOQA
-        indev_drv.set_display(disp)  # NOQA
-        indev_drv.enable(True)  # NOQA
-        self._indev_drv = indev_drv
+        self._last_key = ord(' ')
 
         super().__init__()
         self._set_type(lv.INDEV_TYPE.KEYPAD)  # NOQA
+        self._indev_drv.enable(True)  # NOQA
 
     def _get_key(self):
         # this method needs to be overridden.
@@ -53,34 +23,13 @@ class KeypadDriver(_indev_base.IndevBase):
         key = self._get_key()
 
         if key is None:  # ignore no key
-            if self._current_state != lv.INDEV_STATE.RELEASED:  # NOQA
-                self._current_state = lv.INDEV_STATE.RELEASED  # NOQA
-                res = True
-            else:
-                res = False
-
-            data.key = self._last_key
-            data.state = self._current_state
-            data.continue_reading = False
-            return res
-
-        state, key = key
-
-        self._last_key = key
-
-        if self._current_state == state == lv.INDEV_STATE.RELEASED:  # NOQA
-            res = False
-            data.continue_reading = False
+            state = self.RELEASED
+            key = self._last_key
         else:
-            res = True
-            data.continue_reading = True
+            state, key = key
 
-        self._current_state = state
-
-        data.key = self._last_key
-        data.state = self._current_state
-
-        return res
+        data.key = self._last_key = key
+        data.state = self._current_state = state
 
     def get_type(self):
         return self._indev_drv.get_type()  # NOQA

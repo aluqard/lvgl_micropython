@@ -16,7 +16,7 @@ from . import (
     scrub_build_folder
 )
 
-IDF_VER = '5.2.0'
+IDF_VER = '5.4.0'
 
 
 def get_partition_file_name(otp):
@@ -158,7 +158,7 @@ def get_espidf():
         ]
     ]
     print()
-    print(f'collecting ESP-IDF v5.2.3')
+    print(f'collecting ESP-IDF v5.4.0')
     print('this might take a while...')
     result, _ = spawn(cmd, spinner=True)
     if result != 0:
@@ -477,21 +477,20 @@ def esp32_s3_args(extra_args):
         dest='oct_flash',
         action='store_true'
     )
-
     esp_argParser.add_argument(
-        '--enable_fb_test',
-        dest='optimum_fb_size',
-        default=False,
+        '--py-freertos',
+        help='espose FreeRTOS to Python',
+        dest='py_freertos',
         action='store_true'
     )
 
     esp_args, extra_args = esp_argParser.parse_known_args(extra_args)
 
+    if esp_args.py_freertos:
+        os.environ['PY_FREERTOS'] = '1'
+
     oct_flash = esp_args.oct_flash
     board_variant = esp_args.board_variant
-    optimum_fb_size = str(int(esp_args.optimum_fb_size))
-
-    os.environ['EXTRA_CFLAGS'] = f'-DLCD_RGB_OPTIMUM_FB_SIZE={optimum_fb_size}'
 
     return extra_args
 
@@ -528,31 +527,6 @@ def esp32_args(extra_args):
 
 def parse_args(extra_args, lv_cflags, brd):
     global board
-    global custom_board_path
-
-    esp_argParser = ArgumentParser(prefix_chars='-')
-    esp_argParser.add_argument(
-        '--custom-board-path',
-        dest='custom_board_path',
-        default=None,
-        action='store'
-    )
-    esp_args, extra_args = esp_argParser.parse_known_args(extra_args)
-
-    custom_board_path = esp_args.custom_board_path
-
-    if custom_board_path is not None:
-        if not os.path.exists(custom_board_path):
-            raise RuntimeError(
-                'Supplied custom board path does not exist.'
-            )
-        parent_folder_name = os.path.split(custom_board_path)[-1]
-
-        dst_path = f'lib/micropython/ports/esp32/boards/{parent_folder_name}'
-        shutil.copytree(custom_board_path, dst_path)
-
-        if brd is None:
-            brd = parent_folder_name
 
     if brd is None:
         brd = 'ESP32_GENERIC'
@@ -677,7 +651,7 @@ set_displays = []
 
 
 def build_manifest(
-    target, script_dir, lvgl_api, displays, indevs, expanders, frozen_manifest
+    target, script_dir, lvgl_api, displays, indevs, expanders, imus, frozen_manifest
 ):
     _update_mphalport(target)
 
@@ -697,7 +671,7 @@ def build_manifest(
 
     set_displays.extend(generate_manifest(
         script_dir, lvgl_api, manifest_path,
-        displays, indevs, expanders, frozen_manifest
+        displays, indevs, expanders, imus, frozen_manifest
         # f'{script_dir}/api_drivers/common_api_drivers/frozen/other/spi3wire.py'
     ))
 
@@ -793,8 +767,6 @@ def environ_helper(idf_path):
 
         spawn(env_cmds, out_to_screen=False)
 
-    env['EXTRA_CFLAGS'] = f'-DLCD_RGB_OPTIMUM_FB_SIZE={optimum_fb_size}'
-
     return env
 
 
@@ -888,7 +860,6 @@ def setup_idf_environ():
     else:
         cmds = []
 
-    env['EXTRA_CFLAGS'] = f'-DLCD_RGB_OPTIMUM_FB_SIZE={optimum_fb_size}'
     return env, cmds
 
 
@@ -956,7 +927,7 @@ def submodules():
         ['./install.sh', 'all']
     ]
 
-    print(f'setting up ESP-IDF v5.2.3')
+    print(f'setting up ESP-IDF v5.4.0')
     print('this might take a while...')
     env = {k: v for k, v in os.environ.items()}
     env['IDF_PATH'] = os.path.abspath(idf_path)
@@ -1035,6 +1006,7 @@ def find_esp32_ports(chip):
 
 SDKCONFIG_PATH = f'build/sdkconfig.board'
 
+MPTHREADPORT_H_PATH = 'lib/micropython/ports/esp32/mpthreadport.h'
 MPTHREADPORT_PATH = 'lib/micropython/ports/esp32/mpthreadport.c'
 MPCONFIGPORT_PATH = 'lib/micropython/ports/esp32/mpconfigport.h'
 PANICHANDLER_PATH = 'lib/micropython/ports/esp32/panichandler.c'
@@ -1047,25 +1019,73 @@ if not os.path.exists('micropy_updates/originals/esp32'):
 
 
 def update_mpthreadport():
-    data = read_file('esp32', MPTHREADPORT_PATH)
+    h_data = read_file('esp32', MPTHREADPORT_H_PATH)
 
-    if '_CORE_ID' not in data:
-        data = data.replace('MP_TASK_COREID', '_CORE_ID')
-
+    if 'typedef mp_thread_mutex_t mp_thread_recursive_mutex_t;' not in h_data:
         new_data = [
-            '#if MICROPY_PY_THREAD',
+            '} mp_thread_mutex_t;',
             '',
-            '#if (MP_USE_DUAL_CORE && !CONFIG_FREERTOS_UNICORE)',
-            '    #define _CORE_ID    tskNO_AFFINITY',
-            '#else',
-            '    #define _CORE_ID    MP_TASK_COREID',
-            '#endif',
-            ''
+            '#if MICROPY_PY_THREAD_GIL == 0',
+            'typedef mp_thread_mutex_t mp_thread_recursive_mutex_t;',
+            'void mp_thread_recursive_mutex_init(mp_thread_recursive_mutex_t *mutex);',
+            'int mp_thread_recursive_mutex_lock(mp_thread_recursive_mutex_t *mutex, int wait);',
+            'void mp_thread_recursive_mutex_unlock(mp_thread_recursive_mutex_t *mutex);',
+            '#endif'
         ]
 
-        data = data.replace('#if MICROPY_PY_THREAD', '\n'.join(new_data), 1)
+        h_data = h_data.replace(
+            '} mp_thread_mutex_t;',
+            '\n'.join(new_data)
+        )
 
-        write_file(MPTHREADPORT_PATH, data)
+        c_data = read_file('esp32', MPTHREADPORT_PATH)
+
+        new_data = [
+            '} mp_thread_t;',
+            '',
+            '#if MICROPY_PY_THREAD_GIL == 0',
+            'void mp_thread_recursive_mutex_init(mp_thread_recursive_mutex_t *mutex)',
+            '{',
+            '    mutex->handle = xSemaphoreCreateRecursiveMutexStatic(&mutex->buffer);',
+            '    xSemaphoreGiveRecursive(mutex->handle);',
+            '}',
+            '',
+            'int mp_thread_recursive_mutex_lock(mp_thread_recursive_mutex_t *mutex, int wait)',
+            '{',
+            '    return pdTRUE == xSemaphoreTakeRecursive(mutex->handle, pdMS_TO_TICKS((uint32_t)wait));',
+            '}',
+            '',
+            'void mp_thread_recursive_mutex_unlock(mp_thread_recursive_mutex_t *mutex)',
+            '{',
+            '    xSemaphoreGiveRecursive(mutex->handle);',
+            '}',
+            '#endif'
+        ]
+        c_data = c_data.replace(
+            '} mp_thread_t;',
+            '\n'.join(new_data)
+        )
+
+        write_file(MPTHREADPORT_PATH, c_data)
+
+    # if '_CORE_ID' not in data:
+    #     data = data.replace('MP_TASK_COREID', '_CORE_ID')
+    #
+    #     new_data = [
+    #         '#if MICROPY_PY_THREAD',
+    #         '',
+    #         '#if (MP_USE_DUAL_CORE && !CONFIG_FREERTOS_UNICORE)',
+    #         '    #define _CORE_ID    tskNO_AFFINITY',
+    #         '#else',
+    #         '    #define _CORE_ID    MP_TASK_COREID',
+    #         '#endif',
+    #         ''
+    #     ]
+    #
+    #     data = data.replace('#if MICROPY_PY_THREAD', '\n'.join(new_data), 1)
+    #
+    write_file(MPTHREADPORT_H_PATH, h_data)
+    pass
 
 
 def update_panic_handler():
@@ -1105,13 +1125,20 @@ def update_mpconfigport():
     data = read_file('esp32', MPCONFIGPORT_PATH)
 
     if custom_board_path is None:
+
+        # doesn't work
         repl_data = [
+            # '#ifndef USB_SERIAL_JTAG_PACKET_SZ_BYTES',
+            # '#define USB_SERIAL_JTAG_PACKET_SZ_BYTES (64)',
+            # '#endif',
+            # '',
             '#ifdef MICROPY_HW_UART_REPL_BAUD',
             '#undef MICROPY_HW_UART_REPL_BAUD',
             '#endif',
             f'#define MICROPY_HW_UART_REPL_BAUD  ({uart_repl_bitrate})'
         ]
 
+        # doesn't work
         if enable_uart_repl is not None:
             repl_data.extend([
                 '#ifdef MICROPY_HW_ENABLE_UART_REPL',
@@ -1120,12 +1147,18 @@ def update_mpconfigport():
                 f'#define MICROPY_HW_ENABLE_UART_REPL  ({int(enable_uart_repl.lower() == "y")})'
             ])
 
+        # doesn't work
         if enable_cdc_repl is not None:
             repl_data.extend([
                 '#ifdef MICROPY_HW_ENABLE_USBDEV',
                 '#undef MICROPY_HW_ENABLE_USBDEV',
                 '#endif',
-                f'#define MICROPY_HW_ENABLE_USBDEV  ({int(enable_cdc_repl.lower() == "y")})'
+                f'#define MICROPY_HW_ENABLE_USBDEV  ({int(enable_cdc_repl.lower() == "y")})',
+                '',
+                '#ifdef MICROPY_HW_USB_CDC',
+                '#undef MICROPY_HW_USB_CDC',
+                '#endif',
+                '#define MICROPY_HW_USB_CDC  (MICROPY_HW_ENABLE_USBDEV)'
             ])
 
         if enable_jtag_repl is not None:
@@ -1133,8 +1166,7 @@ def update_mpconfigport():
                 '#ifdef MICROPY_HW_ESP_USB_SERIAL_JTAG',
                 '#undef MICROPY_HW_ESP_USB_SERIAL_JTAG',
                 '#endif',
-                f'#define MICROPY_HW_ESP_USB_SERIAL_JTAG  ({int(enable_jtag_repl.lower() == "y")})',
-                '#define USB_SERIAL_JTAG_PACKET_SZ_BYTES 	(64)'
+                f'#define MICROPY_HW_ESP_USB_SERIAL_JTAG  ({int(enable_jtag_repl.lower() == "y")})'
             ])
 
         repl_data.extend([
@@ -1149,24 +1181,21 @@ def update_mpconfigport():
         )
 
     pattern = (
-        '#if !(CONFIG_IDF_TARGET_ESP32 && CONFIG_SPIRAM && '
-        'CONFIG_SPIRAM_CACHE_WORKAROUND)\n'
+        '#if !(CONFIG_IDF_TARGET_ESP32 && CONFIG_SPIRAM && CONFIG_SPIRAM_CACHE_WORKAROUND)\n'
         '#define MICROPY_WRAP_MP_BINARY_OP(f) IRAM_ATTR f\n'
         '#endif'
     )
 
     if pattern in data:
         pattern = (
-            '#if !(CONFIG_IDF_TARGET_ESP32 && CONFIG_SPIRAM '
-            '&& CONFIG_SPIRAM_CACHE_WORKAROUND)\n'
+            '#if !(CONFIG_IDF_TARGET_ESP32 && CONFIG_SPIRAM && CONFIG_SPIRAM_CACHE_WORKAROUND)\n'
         )
         data = data.replace(
             '#define MICROPY_WRAP_MP_SCHED_EXCEPTION(f) IRAM_ATTR f\n',
             ''
         )
         data = data.replace(
-            '#define MICROPY_WRAP_MP_SCHED_KEYBOARD_INTERRUPT(f) '
-            'IRAM_ATTR f\n',
+            '#define MICROPY_WRAP_MP_SCHED_KEYBOARD_INTERRUPT(f) IRAM_ATTR f\n',
             ''
         )
         data = data.replace(
@@ -1180,93 +1209,95 @@ def update_mpconfigport():
                       'IRAM_ATTR f\n'
         )
 
-    has_dual_core = 'MP_USE_DUAL_CORE' in data
+    # has_dual_core = 'MP_USE_DUAL_CORE' in data
+    #
+    # data = data.split('\n')
+    #
+    # for i, line in enumerate(data):
+    #     if has_dual_core and line.startswith('#define MP_USE_DUAL_CORE'):
+    #         data[i] = (
+    #             '#define MP_USE_DUAL_CORE                    '
+    #             f'({int(dual_core_threads)})'
+    #         )
+    #         continue
+    #
+    #     if line.startswith('#define MICROPY_PY_THREAD_GIL'):
+    #         data[i] = (
+    #             f'#define MICROPY_PY_THREAD_GIL               '
+    #             f'({int(not dual_core_threads)})'
+    #         )
+    #         if not has_dual_core:
+    #             data[i] += (
+    #                 '\n#define MP_USE_DUAL_CORE                    '
+    #                 f'({int(dual_core_threads)})'
+    #             )
+    #         continue
+    #
+    #     if line.startswith('#define MICROPY_TASK_STACK_SIZE'):
+    #         data[i] = (
+    #             f'#define MICROPY_TASK_STACK_SIZE           ({task_stack_size})'
+    #         )
+    #         continue
 
-    data = data.split('\n')
-
-    for i, line in enumerate(data):
-        if has_dual_core and line.startswith('#define MP_USE_DUAL_CORE'):
-            data[i] = (
-                '#define MP_USE_DUAL_CORE                    '
-                f'({int(dual_core_threads)})'
-            )
-            continue
-
-        if line.startswith('#define MICROPY_PY_THREAD_GIL'):
-            data[i] = (
-                f'#define MICROPY_PY_THREAD_GIL               '
-                f'({int(not dual_core_threads)})'
-            )
-            if not has_dual_core:
-                data[i] += (
-                    '\n#define MP_USE_DUAL_CORE                    '
-                    f'({int(dual_core_threads)})'
-                )
-            continue
-
-        if line.startswith('#define MICROPY_TASK_STACK_SIZE'):
-            data[i] = (
-                f'#define MICROPY_TASK_STACK_SIZE           ({task_stack_size})'
-            )
-            continue
-
-    data = '\n'.join(data)
+    # data = '\n'.join(data)
 
     write_file(MPCONFIGPORT_PATH, data)
 
 
 def update_main():
-    data = read_file('esp32', MAIN_PATH)
+    # data = read_file('esp32', MAIN_PATH)
 
-    rep_data = [
-        '#if SOC_LCD_I80_SUPPORTED',
-        '#include "../../../../ext_mod/lcd_bus/esp32_include/i80_bus.h"',
-        '#endif',
-        '',
-        '#if SOC_LCD_RGB_SUPPORTED',
-        '#include "../../../../ext_mod/lcd_bus/esp32_include/rgb_bus.h"',
-        '#endif',
-        '',
-        '#include "../../../../ext_mod/lcd_bus/esp32_include/spi_bus.h"',
-        '#include "../../../../ext_mod/lcd_bus/esp32_include/i2c_bus.h"',
-        '#include "../../../../ext_mod/spi3wire/include/spi3wire.h"',
-        '#include "../../../../micropy_updates/common/mp_spi_common.h"',
-        '',
-        '#if MICROPY_BLUETOOTH_NIMBLE'
-    ]
+    # rep_data = [
+    #     '#if SOC_LCD_I80_SUPPORTED',
+    #     '#include "../../../../ext_mod/lcd_bus/esp32_include/i80_bus.h"',
+    #     '#endif',
+    #     '',
+    #     '#if SOC_LCD_RGB_SUPPORTED',
+    #     '#include "../../../../ext_mod/lcd_bus/esp32_include/rgb_bus.h"',
+    #     '#endif',
+    #     '',
+    #     '#include "../../../../ext_mod/lcd_bus/esp32_include/spi_bus.h"',
+    #     '#include "../../../../ext_mod/lcd_bus/esp32_include/i2c_bus.h"',
+    #     '#include "../../../../ext_mod/spi3wire/include/spi3wire.h"',
+    #     '#include "../../../../micropy_updates/common/mp_spi_common.h"',
+    #     '',
+    #     '#if MICROPY_BLUETOOTH_NIMBLE'
+    # ]
 
-    data = data.replace(
-        '#if MICROPY_BLUETOOTH_NIMBLE',
-        '\n'.join(rep_data),
-        1
-    )
+    # data = data.replace(
+    #     '#if MICROPY_BLUETOOTH_NIMBLE',
+    #     '\n'.join(rep_data),
+    #     1
+    # )
 
-    rep_data = [
-        'soft_reset_exit:',
-        ' ',
-        '#if SOC_LCD_I80_SUPPORTED',
-        '    mp_lcd_i80_bus_deinit_all();',
-        '#endif',
-        '    ',
-        '#if SOC_LCD_RGB_SUPPORTED',
-        '   mp_lcd_rgb_bus_deinit_all();',
-        '#endif',
-        '    ',
-        '    mp_lcd_spi_bus_deinit_all();',
-        '    ',
-        '    mp_lcd_i2c_bus_deinit_all();',
-        '    ',
-        '    mp_spi3wire_deinit_all();',
-        '    ',
-        '    mp_machine_hw_spi_bus_deinit_all();'
-    ]
+    # rep_data = [
+    #     'soft_reset_exit:',
+    #     ' ',
+    #     '#if SOC_LCD_I80_SUPPORTED',
+    #     '    mp_lcd_i80_bus_deinit_all();',
+    #     '#endif',
+    #     '    ',
+    #     '#if SOC_LCD_RGB_SUPPORTED',
+    #     '   mp_lcd_rgb_bus_deinit_all();',
+    #     '#endif',
+    #     '    ',
+    #     '    mp_lcd_spi_bus_deinit_all();',
+    #     '    ',
+    #     '    mp_lcd_i2c_bus_deinit_all();',
+    #     '    ',
+    #     '    mp_spi3wire_deinit_all();',
+    #     '    ',
+    #     '    mp_machine_hw_spi_bus_deinit_all();'
+    # ]
 
-    data = data.replace(
-        'soft_reset_exit:',
-        '\n'.join(rep_data)
-    )
+    # data = data.replace(
+    #     'soft_reset_exit:',
+    #     '\n'.join(rep_data)
+    # )
 
-    write_file(MAIN_PATH, data)
+    # write_file(MAIN_PATH, data)
+
+    pass
 
 
 def build_sdkconfig(*args):
@@ -1274,6 +1305,8 @@ def build_sdkconfig(*args):
         return
 
     base_config = [
+        '',
+        'CONFIG_ESP_TIMER_SUPPORTS_ISR_DISPATCH_METHOD=y',
         'CONFIG_ESPTOOLPY_AFTER_NORESET=y',
         'CONFIG_PARTITION_TABLE_CUSTOM=y',
         'CONFIG_ESPTOOLPY_FLASHSIZE_2MB=n',
@@ -1283,10 +1316,13 @@ def build_sdkconfig(*args):
         'CONFIG_ESPTOOLPY_FLASHSIZE_32MB=n',
         'CONFIG_ESPTOOLPY_FLASHSIZE_64MB=n',
         'CONFIG_ESPTOOLPY_FLASHSIZE_128MB=n',
-        'CONFIG_COMPILER_OPTIMIZATION_SIZE=n',
-        'CONFIG_COMPILER_OPTIMIZATION_PERF=n',
+        # 'CONFIG_COMPILER_OPTIMIZATION_SIZE=n',
+        # 'CONFIG_COMPILER_OPTIMIZATION_PERF=n',
         'CONFIG_COMPILER_OPTIMIZATION_CHECKS_SILENT=y'
     ]
+
+    if board == 'ESP32_GENERIC_S3':
+        base_config.insert(1, 'CONFIG_SPIRAM_XIP_FROM_PSRAM=y')
 
     if DEBUG:
         base_config.extend([
@@ -1328,7 +1364,7 @@ def build_sdkconfig(*args):
                 for itm in (
                     15, 16, 20, 24, 26, 30, 32, 40, 48, 60, 64, 80, 120
                 ):
-                    base_config.append(f'CONFIG_ESPTOOLPY__FLASHFREQ_{itm}M=n')
+                    base_config.append(f'CONFIG_ESPTOOLPY_FLASHFREQ_{itm}M=n')
             elif 'SPIRAM_SPEED' in arg:
                 for itm in (20, 26, 40, 80, 120):
                     base_config.append(f'CONFIG_SPIRAM_SPEED_{itm}M=n')
@@ -1349,8 +1385,8 @@ def build_sdkconfig(*args):
 
     if optimize_size:
         base_config.append('CONFIG_COMPILER_OPTIMIZATION_SIZE=y')
-    else:
-        base_config.append('CONFIG_COMPILER_OPTIMIZATION_PERF=y')
+    # else:
+    #     base_config.append('CONFIG_COMPILER_OPTIMIZATION_PERF=y')
 
     if oct_flash:
         base_config.append('CONFIG_ESPTOOLPY_OCT_FLASH=y')
@@ -1454,7 +1490,7 @@ def compile(*args):  # NOQA
                 app_size = app_size.split('micropython.bin size', 1)[1]
                 app_size = int(app_size.split(':', 1)[0].strip(), 16)
 
-                partition.set_app_size(app_size)
+                partition.set_app_size(app_size)  # NOQA
                 partition.save()
 
                 sys.stdout.write(
@@ -1503,7 +1539,7 @@ def compile(*args):  # NOQA
 
             espressif_path = os.path.expanduser('~/.espressif')
 
-            for ver in ('3.8', '3.9', '3.10', '3.11', '3.12'):
+            for ver in ('3.8', '3.9', '3.10', '3.11', '3.12', '3.13'):
                 python_path = (
                     f'{espressif_path}/python_env/'
                     f'idf{IDF_VER[:-2]}_py{ver}_env/bin'
@@ -1522,8 +1558,9 @@ def compile(*args):  # NOQA
 
             build_name = f'build-{board}'
 
-            if board_variant:
-                build_name += f'-{board_variant}'
+            if custom_board_path is None:
+                if board_variant:
+                    build_name += f'-{board_variant}'
 
             full_file_path = (
                 f'{SCRIPT_DIR}/lib/micropython/ports/esp32/{build_name}'
@@ -1542,9 +1579,12 @@ def compile(*args):  # NOQA
 
             scrub_build_folder()
 
-            build_bin_file = f'build/lvgl_micropy_{build_name[6:]}-{flash_size}'
-            if oct_flash:
-                build_bin_file += '_OCTFLASH'
+            if custom_board_path is None:
+                build_bin_file = f'build/lvgl_micropy_{build_name[6:]}-{flash_size}'
+                if oct_flash:
+                    build_bin_file += '_OCTFLASH'
+            else:
+                build_bin_file = f'build/lvgl_micropy_{build_name[6:]}'
 
             build_bin_file += '.bin'
             build_bin_file = os.path.abspath(build_bin_file)

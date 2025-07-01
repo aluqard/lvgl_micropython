@@ -217,7 +217,7 @@ def update_mphalport(target):
 
 def generate_manifest(
     script_dir, lvgl_api, manifest_path, displays,
-    indevs, io_expanders, frozen_manifest, *addl_manifest_files
+    indevs, io_expanders, imus, frozen_manifest, *addl_manifest_files
 ):
     addl_manifest_files = list(addl_manifest_files)
 
@@ -256,6 +256,19 @@ def generate_manifest(
             f'frozen/other/task_handler.py'
         )
     ]
+
+    if imus:
+        frozen_manifest_files.extend([
+            f'{script_dir}/api_drivers/common_api_drivers/frozen/other/auto_rotation.py',
+            f'{api_path}/frozen/imu_sensor/imu_sensor_framework.py'
+        ])
+
+    toml_gen_driver = f'{script_dir}/build/display.py'
+    if os.path.exists(toml_gen_driver):
+        print(toml_gen_driver)
+        file_path, file_name = os.path.split(toml_gen_driver)
+        entry = f"freeze('{file_path}', '{file_name}')"
+        manifest_files.append(entry)
 
     for file in frozen_manifest_files:
         if not os.path.exists(file):
@@ -318,6 +331,17 @@ def generate_manifest(
 
             displays.append(file)
 
+    if 'all' in imus:
+        imus.remove('all')
+        path = f'{script_dir}/api_drivers/common_api_drivers/imu_sensor'
+        for file in os.listdir(path):
+            if '.wip' in file:
+                continue
+
+            if file.endswith('.py'):
+                name = file[:-3]
+                imus.append(name)
+
     for file in io_expanders:
         if not os.path.exists(file):
             tmp_file = (
@@ -327,6 +351,28 @@ def generate_manifest(
 
             if not os.path.exists(tmp_file):
                 raise RuntimeError(f'IO Expander not found "{file}"')
+
+            print(tmp_file)
+
+            file_path, file_name = os.path.split(tmp_file)
+            entry = f"freeze('{file_path}', '{file_name}')"
+        else:
+            print(file)
+            file_path, file_name = os.path.split(file)
+            entry = f"freeze('{file_path}', '{file_name}')"
+
+        if entry not in manifest_files:
+            manifest_files.append(entry)
+
+    for file in imus:
+        if not os.path.exists(file):
+            tmp_file = (
+                f'{script_dir}/api_drivers/common_api_drivers'
+                f'/imu_sensor/{file.lower()}.py'
+            )
+
+            if not os.path.exists(tmp_file):
+                raise RuntimeError(f'IMU sensor not found "{file}"')
 
             print(tmp_file)
 
@@ -424,7 +470,7 @@ def get_lvgl():
         'git submodule update --init --depth=1 -- lib/lvgl'
     ]
     print()
-    print('collecting LVGL')
+    print('collecting LVGL v9.3.0')
     print('this might take a while...')
     result, _ = spawn(cmd_, spinner=True)
     if result != 0:
@@ -437,7 +483,7 @@ def get_micropython():
         'git submodule update --init --depth=1 -- lib/micropython',
     ]
     print()
-    print('collecting MicroPython 1.24.1')
+    print('collecting MicroPython 1.25.0')
     result, _ = spawn(cmd_, spinner=True)
     if result != 0:
         sys.exit(result)
@@ -801,7 +847,7 @@ def mpy_cross():
 
 
 def build_manifest(
-    target, script_dir, lvgl_api, displays, indevs, expanders, frozen_manifest
+    target, script_dir, lvgl_api, displays, indevs, expanders, imus, frozen_manifest
 ):
     update_mphalport(target)
     if target == 'teensy':
@@ -813,7 +859,7 @@ def build_manifest(
 
     generate_manifest(
         script_dir, lvgl_api, manifest_path,
-        displays, indevs, expanders, frozen_manifest
+        displays, indevs, expanders, imus, frozen_manifest
     )
 
 
