@@ -1244,6 +1244,18 @@ def update_mpconfigport():
     write_file(MPCONFIGPORT_PATH, data)
 
 
+def update_mkrules():
+    mkrules_path = 'lib/micropython/py/mkrules.cmake'
+    with open(mkrules_path, 'rb') as f:
+        data = f.read().decode('utf-8')
+
+    if 'REMOVE_DUPLICATES' not in data:
+        data = data.replace('add_custom_command(', 'list(REMOVE_DUPLICATES MICROPY_CPP_FLAGS)\n\nadd_custom_command(', 1)
+
+        with open(mkrules_path, 'wb') as f:
+            f.write(data.encode('utf-8'))
+
+
 def update_main():
     # data = read_file('esp32', MAIN_PATH)
 
@@ -1402,6 +1414,8 @@ def build_sdkconfig(*args):
     with open(SDKCONFIG_PATH, 'w') as f:
         f.write('\n'.join(base_config))
 
+    return args
+
 
 def revert_custom_board():
     if custom_board_path is None:
@@ -1425,7 +1439,7 @@ def compile(*args):  # NOQA
     if ccache:
         env['IDF_CCACHE_ENABLE'] = '1'
 
-    build_sdkconfig(*args)
+    args = build_sdkconfig(*args)
 
     if custom_board_path is None:
 
@@ -1442,12 +1456,13 @@ def compile(*args):  # NOQA
     update_panic_handler()
     update_mpconfigboard()
     update_mpconfigport()
+    update_mkrules()
 
     copy_micropy_updates('esp32')
 
     try:
         cmd_ = compile_cmd[:]
-        cmd_.extend(list(args))
+        cmd_.extend(args)
 
         ret_code, output = spawn(cmd_, env=env, cmpl=True)
 
