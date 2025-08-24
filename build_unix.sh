@@ -10,14 +10,15 @@ sed -i 's/\^esp32/\^esp32*/g' micropython.cmake
 sed -i '/mtext-section-literals/a \\t\t-DSQLITE_DEBUG' micropython.cmake
 cd ..
 
-if [ ! -d micropython-ulab ]; then
+if [ -d micropython-ulab ]; then
   rm -rf micropython-ulab
 fi
 
 git clone https://github.com/v923z/micropython-ulab.git
+
 cd ..
 
-python3 make.py unix clean DISPLAY=sdl_display INDEV=sdl_pointer --heap-size=128000000
+python3 make.py unix clean DISPLAY=sdl_display INDEV=sdl_pointer --heap-size=256000000
 
 cd build
 if [ -f lvgl_micropy_unix ]; then

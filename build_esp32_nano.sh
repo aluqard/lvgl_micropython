@@ -10,7 +10,7 @@ sed -i 's/\^esp32/\^esp32*/g' micropython.cmake
 sed -i '/mtext-section-literals/a \\t\t-DSQLITE_DEBUG' micropython.cmake
 cd ..
 
-if [ ! -d micropython-ulab ]; then
+if [ -d micropython-ulab ]; then
   rm -rf micropython-ulab
 fi
 

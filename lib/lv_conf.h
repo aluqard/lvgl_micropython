@@ -420,7 +420,7 @@ extern void *mp_lv_roots;
 
 /* VG-Lite Simulator */
 /*Requires: LV_USE_THORVG_INTERNAL or LV_USE_THORVG_EXTERNAL */
-#define LV_USE_VG_LITE_THORVG  0
+#define LV_USE_VG_LITE_THORVG  1
 
 #if LV_USE_VG_LITE_THORVG
 
@@ -485,7 +485,6 @@ extern void *mp_lv_roots;
 
 /* Use `float` as `lv_value_precise_t` */
 #define LV_USE_FLOAT            MICROPY_FLOAT
-
 /*==================
  *   FONT USAGE
  *===================*/
@@ -864,6 +863,10 @@ LV_FONT_DECLARE(lv_font_seg14_bold_56) \
 
 /*Rlottie library*/
 #define LV_USE_RLOTTIE MICROPY_RLOTTIE
+
+#define LV_USE_FLOAT  0
+
+#define LV_USE_MATRIX  0
 
 /*Enable Vector Graphic APIs*/
 #define LV_USE_VECTOR_GRAPHIC  0
