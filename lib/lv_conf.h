@@ -864,7 +864,7 @@ LV_FONT_DECLARE(lv_font_seg14_bold_56) \
 /*Rlottie library*/
 #define LV_USE_RLOTTIE MICROPY_RLOTTIE
 
-#define LV_USE_FLOAT  0
+//#define LV_USE_FLOAT  0
 
 #define LV_USE_MATRIX  0
 
