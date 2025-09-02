@@ -16,6 +16,6 @@ fi
 
 git clone https://github.com/v923z/micropython-ulab.git
 cd ..
-#cp -R font/* lib/lvgl/src/font
-#yes | cp -R boards/T_DISPLAYS3 lib/micropython/ports/esp32/boards 
+cp -R font/* lib/lvgl/src/font
+yes | cp -R boards/T_DISPLAYS3 lib/micropython/ports/esp32/boards 
 python3 make.py esp32 clean BOARD=T_DISPLAYS3 DISPLAY=st7789 FROZEN_MANIFEST=$(pwd)/lib/micropython/ports/esp32/boards/T_DISPLAYS3/manifest.py --dual-core-threads --enable-cdc-repl=y
