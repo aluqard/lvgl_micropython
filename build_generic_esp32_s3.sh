@@ -16,7 +16,9 @@ fi
 
 git clone https://github.com/v923z/micropython-ulab.git
 cd ..
-cp -R font/* lib/lvgl/src/font
-yes | cp -R boards/ESP32_WAVESHARE lib/micropython/ports/esp32/boards 
+#cp -R font/* lib/lvgl/src/font
+#yes | cp -R boards/ESP32_WAVESHARE lib/micropython/ports/esp32/boards 
+rm -rf lib/micropython/ports/esp32/build-ESP32_GENERIC_S3
+
 python3 make.py esp32 clean BOARD=ESP32_GENERIC_S3 BOARD_VARIANT=SPIRAM_OCT DISPLAY=all INDEV=all --dual-core-threads --enable-cdc-repl=y
 python3 make.py esp32 clean BOARD=ESP32_GENERIC_S3 BOARD_VARIANT=SPIRAM DISPLAY=all INDEV=all --dual-core-threads --enable-cdc-repl=y
