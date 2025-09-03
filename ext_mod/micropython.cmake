@@ -24,4 +24,4 @@ if(DEFINED ENV{FUSION})
 endif()
 
 include(${CMAKE_CURRENT_LIST_DIR}/usqlite/micropython.cmake)
-include(${CMAKE_CURRENT_LIST_DIR}/micropython-ulab/micropython.cmake)
+include(${CMAKE_CURRENT_LIST_DIR}/micropython-ulab/code/micropython.cmake)
