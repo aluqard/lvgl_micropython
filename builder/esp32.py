@@ -323,7 +323,7 @@ def common_args(extra_args):
         def_flash_size = 8
     elif board in (
         'UM_FEATHERS2', 'SIL_WESP32',
-        'UM_PROS3', 'UM_FEATHERS3', 'T-HMI', 'ESP32_WAVESHARE', 'T_DISPLAYS3', 'ARDUINO_NANO_ESP32', 'Polverine'
+        'UM_PROS3', 'UM_FEATHERS3', 'T_HMI', 'ESP32_WAVESHARE', 'T_DISPLAYS3', 'ARDUINO_NANO_ESP32', 'Polverine'
     ):
         def_flash_size = 16
     else:
@@ -572,7 +572,7 @@ def parse_args(extra_args, lv_cflags, brd):
     '''
     elif board == 'UM_FEATHERS3':
         extra_args = esp32_s3_args(extra_args)
-    elif board == 'T-HMI':
+    elif board == 'T_HMI':
         extra_args = esp32_s3_args(extra_args)
     elif board == 'T_DISPLAYS3':
         extra_args = esp32_s3_args(extra_args)
