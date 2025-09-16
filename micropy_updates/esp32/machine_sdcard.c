@@ -41,7 +41,7 @@
 #include "sdmmc_cmd.h"
 #include "esp_log.h"
 
-#define DEBUG 0
+#define DEBUG 1
 #if DEBUG
 #define DEBUG_printf(...) ESP_LOGI("modsdcard", __VA_ARGS__)
 #else
@@ -225,9 +225,37 @@ static mp_obj_t machine_sdcard_make_new(const mp_obj_type_t *type, size_t n_args
 #if SOC_SDMMC_HOST_SUPPORTED
     else {
         // SD/MMC interface
-        DEBUG_printf("  Setting up SDMMC slot configuration");
-        sdmmc_slot_config_t slot_config = SDMMC_SLOT_CONFIG_DEFAULT();
 
+        DEBUG_printf("  Setting up SDMMC slot configuration");
+        // sdmmc_slot_config_t slot_config = SDMMC_SLOT_CONFIG_DEFAULT();     
+        #if defined(MICROPY_HW_SDMMC_SLOT_CONFIG)
+            DEBUG_printf("  my sdmmc configuration");
+            sdmmc_slot_config_t slot_config = MICROPY_HW_SDMMC_SLOT_CONFIG();
+
+            if ( (arg_vals[ARG_miso].u_obj != mp_const_none) && 
+                 (arg_vals[ARG_miso].u_obj != mp_const_none) && 
+                 (arg_vals[ARG_miso].u_obj != mp_const_none) 
+               ) {
+                DEBUG_printf("  use user pin: sck->clk, miso ->cmd, mosi ->d0");
+                SET_CONFIG_PIN(slot_config, clk, ARG_sck);
+                SET_CONFIG_PIN(slot_config, cmd, ARG_miso);
+                SET_CONFIG_PIN(slot_config, d0, ARG_mosi);
+            }
+        #else
+            // SD/MMC interface
+            DEBUG_printf("  Setting up SDMMC slot configuration");
+            sdmmc_slot_config_t slot_config = SDMMC_SLOT_CONFIG_DEFAULT();
+
+            // slot_config.clk = 12;
+            // slot_config.cmd = 11;
+            // slot_config.d0 = 13;
+            // slot_config.width = 1;
+            
+        #endif // MICROPY_HW_SDMMC_SLOT_CONFIG
+
+        //DEBUG_printf("  Setting up SDMMC slot configuration");
+        //sdmmc_slot_config_t slot_config = SDMMC_SLOT_CONFIG_DEFAULT();
+        
         self->sdspi_handle = -1;
 
         // Stronger external pull-ups are still needed but apparently
