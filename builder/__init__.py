@@ -174,6 +174,10 @@ def get_lvgl_version():
 
 
 def set_mp_version(port):
+    # TODO: disable this for the time being. I will need to add an include to point to
+    #       the version file
+    return
+
     mpconfigport = f'lib/micropython/ports/{port}/mpconfigport.h'
 
     with open(mpconfigport, 'rb') as f:
@@ -181,7 +185,7 @@ def set_mp_version(port):
 
     if 'MICROPY_BANNER_NAME_AND_VERSION' not in data:
         data += (
-            '\n\n#include "genhdr/mpversion.h"\n\n'
+            # '\n\n#include "genhdr/mpversion.h"\n\n'
             '\n\n#define MICROPY_BANNER_NAME_AND_VERSION '
             f'"LVGL ({get_lvgl_version()}) MicroPython (" MICROPY_VERSION_STRING '
             f'") Binding compiled on " MICROPY_BUILD_DATE\n\n'
@@ -396,7 +400,7 @@ def generate_manifest(
             if not os.path.exists(tmp_file):
                 raise RuntimeError(f'File not found "{file}"')
 
-            if file.startswith('ft'):
+            if file.lower().startswith('ft'):
                 focaltech_touch = (
                     f'{script_dir}/api_drivers/common_api_drivers/'
                     f'indev/focaltech_touch.py'
@@ -483,7 +487,7 @@ def get_micropython():
         'git submodule update --init --depth=1 -- lib/micropython',
     ]
     print()
-    print('collecting MicroPython 1.26.1')
+    print('collecting MicroPython 1.27.0 (master)')
     result, _ = spawn(cmd_, spinner=True)
     if result != 0:
         sys.exit(result)

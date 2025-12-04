@@ -4,15 +4,16 @@
 [submodule "lib/SDL"]
 	path = lib/SDL
 	url = https://github.com/libsdl-org/SDL
-[submodule "lib/esp-idf"]
-	path = lib/esp-idf
-	url = https://github.com/espressif/esp-idf
 [submodule "lib/lvgl"]
 	path = lib/lvgl
 	url = https://github.com/lvgl/lvgl
 [submodule "lib/micropython"]
 	path = lib/micropython
 	url = https://github.com/micropython/micropython
+[submodule "lib/esp-idf"]
+	path = lib/esp-idf
+	url = https://github.com/espressif/esp-idf
+	
 [submodule "ext_mod/usqlite"]
 	path = ext_mod/usqlite
 	url = https://github.com/spatialdude/usqlite
