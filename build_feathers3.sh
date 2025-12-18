@@ -23,4 +23,4 @@ cd ..
 #mkdir -p lib/micropython/ports/esp32/boards/UM_FEATHERS3
 #yes | cp boards/UM_FEATHERS3/* lib/micropython/ports/esp32/boards/UM_FEATHERS3
 rm -rf lib/micropython/ports/esp32/build-UM_FEATHERS3
-python3 make.py esp32 clean BOARD=UM_FEATHERS3 DISPLAY=all INDEV=all FROZEN_MANIFEST=$(pwd)/boards/UM_FEATHERS3/manifest.py --dual-core-threads --enable-cdc-repl=y
+python3 make.py esp32 clean BOARD=UM_FEATHERS3 DISPLAY=all INDEV=all FROZEN_MANIFEST=$(pwd)/boards/UM_FEATHERS3/manifest.py --flash-size=16 --dual-core-threads --enable-cdc-repl=y

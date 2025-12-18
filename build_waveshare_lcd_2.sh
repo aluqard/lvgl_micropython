@@ -17,4 +17,4 @@ cd ..
 #yes | cp -R boards/ESP32_WAVESHARE lib/micropython/ports/esp32/boards 
 
 rm -rf lib/micropython/ports/esp32/build-ESP32_WAVESHARE_TOUCH_LCD_2
-python3 make.py esp32 clean BOARD=ESP32_WAVESHARE_TOUCH_LCD_2 DISPLAY=st7789 INDEV=cst316s IMU=qmi8658c FROZEN_MANIFEST=$(pwd)/boards/ESP32_WAVESHARE_TOUCH_LCD_2/manifest.py --dual-core-threads --enable-cdc-repl=y
+python3 make.py esp32 clean BOARD=ESP32_WAVESHARE_TOUCH_LCD_2 DISPLAY=st7789 INDEV=cst816s IMU=qmi8658c FROZEN_MANIFEST=$(pwd)/boards/ESP32_WAVESHARE_TOUCH_LCD_2/manifest.py --flash-size=16 --dual-core-threads --enable-cdc-repl=y

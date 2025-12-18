@@ -21,4 +21,4 @@ cd ..
 #yes | cp -R boards/T_DISPLAYS3 lib/micropython/ports/esp32/boards 
 
 rm -rf lib/micropython/ports/esp32/build-T_DISPLAYS3
-python3 make.py esp32 clean BOARD=T_DISPLAYS3 DISPLAY=st7789 FROZEN_MANIFEST=$(pwd)/boards/T_DISPLAYS3/manifest.py --dual-core-threads --enable-cdc-repl=y
+python3 make.py esp32 clean BOARD=T_DISPLAYS3 DISPLAY=st7789 FROZEN_MANIFEST=$(pwd)/boards/T_DISPLAYS3/manifest.py --flash-size=16 --dual-core-threads --enable-cdc-repl=y

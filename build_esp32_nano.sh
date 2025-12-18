@@ -19,4 +19,4 @@ cd ..
 
 #cp -R font/* lib/lvgl/src/font
 rm -rf lib/micropython/ports/esp32/build-ARDUINO_NANO_ESP32
-python3 make.py esp32 clean BOARD=ARDUINO_NANO_ESP32 DISPLAY=all INDEV=all --dual-core-threads --enable-cdc-repl=y
+python3 make.py esp32 clean BOARD=ARDUINO_NANO_ESP32 DISPLAY=all INDEV=all --flash-size=16 --dual-core-threads --enable-cdc-repl=y
