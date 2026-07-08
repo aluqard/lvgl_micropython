@@ -18,7 +18,7 @@ fi
 git clone https://github.com/v923z/micropython-ulab.git
 cd ..
 #cp -R font/* lib/lvgl/src/font
-#yes | cp -R boards/Polverine lib/micropython/ports/esp32/boards 
+yes | cp -R boards/Polverine lib/micropython/ports/esp32/boards
 
 rm -rf lib/micropython/ports/esp32/build-Polverine
-python3 make.py esp32 clean BOARD=Polverine FROZEN_MANIFEST=$(pwd)/lib/micropython/ports/esp32/boards/Polverine/manifest.py --dual-core-threads --enable-cdc-repl=y
+python3 make.py esp32 clean BOARD=Polverine FROZEN_MANIFEST=$(pwd)/lib/micropython/ports/esp32/boards/Polverine/manifest.py --dual-core-threads --enable-cdc-repl=y --flash-size 8 --optimize-size
