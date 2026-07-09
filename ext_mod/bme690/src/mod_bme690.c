@@ -68,6 +68,7 @@ typedef struct _mp_bme690_obj_t {
     uint8_t last_op_mode;
     uint8_t op_mode;
     float temp_offset;
+    bool has_temp_offset;   // true if temp_offset was given explicitly
     uint8_t baseline_tracker;
 
     // parallel-mode field buffer
@@ -242,13 +243,21 @@ static mp_obj_t bme690_process(mp_bme690_obj_t *self, int64_t ts_ns,
     }
     if (BSEC_CHECK_INPUT(process_data, BSEC_INPUT_TEMPERATURE)) {
         inputs[n_inputs].sensor_id = BSEC_INPUT_TEMPERATURE;
+#ifdef BME69X_USE_FPU
+        inputs[n_inputs].signal = data->temperature;            // float driver: already degC
+#else
         inputs[n_inputs].signal = data->temperature / 100.0f;   // integer driver: x100
+#endif
         inputs[n_inputs].time_stamp = ts_ns;
         n_inputs++;
     }
     if (BSEC_CHECK_INPUT(process_data, BSEC_INPUT_HUMIDITY)) {
         inputs[n_inputs].sensor_id = BSEC_INPUT_HUMIDITY;
+#ifdef BME69X_USE_FPU
+        inputs[n_inputs].signal = data->humidity;               // float driver: already %rH
+#else
         inputs[n_inputs].signal = data->humidity / 1000.0f;     // integer driver: x1000
+#endif
         inputs[n_inputs].time_stamp = ts_ns;
         n_inputs++;
     }
@@ -357,15 +366,16 @@ static mp_obj_t bme690_process(mp_bme690_obj_t *self, int64_t ts_ns,
 static mp_obj_t bme690_make_new(const mp_obj_type_t *type, size_t n_args, size_t n_kw,
                                 const mp_obj_t *all_args)
 {
-    enum { ARG_scl, ARG_sda, ARG_addr, ARG_port, ARG_freq, ARG_mode, ARG_save_state };
+    enum { ARG_scl, ARG_sda, ARG_addr, ARG_port, ARG_freq, ARG_mode, ARG_save_state, ARG_temp_offset };
     const mp_arg_t allowed_args[] = {
-        { MP_QSTR_scl,        MP_ARG_INT | MP_ARG_KW_ONLY | MP_ARG_REQUIRED },
-        { MP_QSTR_sda,        MP_ARG_INT | MP_ARG_KW_ONLY | MP_ARG_REQUIRED },
-        { MP_QSTR_addr,       MP_ARG_INT | MP_ARG_KW_ONLY, { .u_int = 0x76 } },
-        { MP_QSTR_port,       MP_ARG_INT | MP_ARG_KW_ONLY, { .u_int = 1 } },
-        { MP_QSTR_freq,       MP_ARG_INT | MP_ARG_KW_ONLY, { .u_int = 400000 } },
-        { MP_QSTR_mode,       MP_ARG_OBJ | MP_ARG_KW_ONLY, { .u_obj = mp_const_none } },
-        { MP_QSTR_save_state, MP_ARG_BOOL | MP_ARG_KW_ONLY, { .u_bool = true } },
+        { MP_QSTR_scl,         MP_ARG_INT | MP_ARG_KW_ONLY | MP_ARG_REQUIRED },
+        { MP_QSTR_sda,         MP_ARG_INT | MP_ARG_KW_ONLY | MP_ARG_REQUIRED },
+        { MP_QSTR_addr,        MP_ARG_INT | MP_ARG_KW_ONLY, { .u_int = 0x76 } },
+        { MP_QSTR_port,        MP_ARG_INT | MP_ARG_KW_ONLY, { .u_int = 1 } },
+        { MP_QSTR_freq,        MP_ARG_INT | MP_ARG_KW_ONLY, { .u_int = 400000 } },
+        { MP_QSTR_mode,        MP_ARG_OBJ | MP_ARG_KW_ONLY, { .u_obj = mp_const_none } },
+        { MP_QSTR_save_state,  MP_ARG_BOOL | MP_ARG_KW_ONLY, { .u_bool = true } },
+        { MP_QSTR_temp_offset, MP_ARG_OBJ | MP_ARG_KW_ONLY, { .u_obj = mp_const_none } },
     };
     mp_arg_val_t args[MP_ARRAY_SIZE(allowed_args)];
     mp_arg_parse_all_kw_array(n_args, n_kw, all_args, MP_ARRAY_SIZE(allowed_args), allowed_args, args);
@@ -395,6 +405,11 @@ static mp_obj_t bme690_make_new(const mp_obj_type_t *type, size_t n_args, size_t
     self->freq = args[ARG_freq].u_int;
     self->sample_rate = sr;
     self->nvs_enabled = args[ARG_save_state].u_bool;
+    if (args[ARG_temp_offset].u_obj != mp_const_none) {
+        // Explicit self-heating offset [degC] for BSEC heat compensation.
+        self->temp_offset = mp_obj_get_float(args[ARG_temp_offset].u_obj);
+        self->has_temp_offset = true;
+    }
     self->last_op_mode = BME69X_SLEEP_MODE;
     self->op_mode = BME69X_SLEEP_MODE;
     self->settings.next_call = 0;
@@ -478,9 +493,12 @@ static mp_obj_t bme690_init(mp_obj_t self_in)
         }
     }
 
-    // Temperature offset heuristic (per Bosch reference).
-    self->temp_offset = (self->sample_rate == BSEC_SAMPLE_RATE_LP)  ? BME690_TEMP_OFFSET_LP :
-                        (self->sample_rate == BSEC_SAMPLE_RATE_ULP) ? BME690_TEMP_OFFSET_ULP : 0.0f;
+    // Self-heating offset for BSEC heat compensation. Use the caller-provided
+    // value if given, else the Bosch reference heuristic per sample rate.
+    if (!self->has_temp_offset) {
+        self->temp_offset = (self->sample_rate == BSEC_SAMPLE_RATE_LP)  ? BME690_TEMP_OFFSET_LP :
+                            (self->sample_rate == BSEC_SAMPLE_RATE_ULP) ? BME690_TEMP_OFFSET_ULP : 0.0f;
+    }
     self->baseline_tracker = 0;
 
     st = bme690_update_subscription(self);

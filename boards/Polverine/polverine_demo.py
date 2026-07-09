@@ -79,11 +79,17 @@ def make_bmv080():
     return s
 
 
+# Self-heating offset [degC] for BSEC heat compensation. Calibrate per board:
+# let the sensor run a few minutes, read "Traw", subtract the real room
+# temperature, and put the difference here. e.g. Traw=39.5, room=25.0 -> 14.5.
+BME690_TEMP_OFFSET = 14.5
+
+
 def make_bme690():
     # Dedicated I2C port 0 (new i2c_master driver) so it never clashes with
     # a machine.I2C instance the app might create elsewhere.
     s = bme690.BME690(scl=21, sda=14, addr=0x76, port=0, freq=100_000,
-                      mode="lp", save_state=True)
+                      mode="lp", save_state=True, temp_offset=BME690_TEMP_OFFSET)
     s.init()
     return s
 
@@ -113,15 +119,23 @@ def run():
             try:
                 out = aq.run()
                 if out:
+                    # T / H  = BSEC heat-compensated (ambient). Accurate only once
+                    #          temp_offset is calibrated (see make_bme690 below).
+                    # Traw/Hraw = raw sensor readings; Traw is self-heated (gas
+                    #          heater warms the die) so it reads ~10-15 C high.
+                    # ACC    = BSEC accuracy: 0=calibrating .. 3=calibrated. While
+                    #          ACC==0, IAQ/CO2/VOC stay at BSEC defaults (50/500/0.5).
                     emit("bme690", {
-                        "R":   time.ticks_ms(),
-                        "T":   round(out.get("temperature", 0.0), 2),
-                        "P":   round(out.get("pressure", 0.0) / 100.0, 2),  # Pa -> hPa
-                        "H":   round(out.get("humidity", 0.0), 2),
-                        "IAQ": round(out.get("iaq", 0.0), 2),
-                        "ACC": out.get("iaq_accuracy", 0),
-                        "CO2": round(out.get("co2_equivalent", 0.0), 2),
-                        "VOC": round(out.get("breath_voc_equivalent", 0.0), 3),
+                        "R":    time.ticks_ms(),
+                        "T":    round(out.get("temperature", 0.0), 2),
+                        "H":    round(out.get("humidity", 0.0), 2),
+                        "Traw": round(out.get("raw_temperature", 0.0), 2),
+                        "Hraw": round(out.get("raw_humidity", 0.0), 2),
+                        "P":    round(out.get("pressure", 0.0) / 100.0, 2),  # Pa -> hPa
+                        "IAQ":  round(out.get("iaq", 0.0), 2),
+                        "ACC":  out.get("iaq_accuracy", 0),
+                        "CO2":  round(out.get("co2_equivalent", 0.0), 2),
+                        "VOC":  round(out.get("breath_voc_equivalent", 0.0), 3),
                     })
             except Exception as e:
                 print("# BME690 read error:", e)
