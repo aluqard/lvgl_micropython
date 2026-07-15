@@ -19,11 +19,21 @@
 #   BME690  -> I2C0  SCL=21  SDA=14   addr=0x76 (100 kHz)
 #   RGB LED -> R=47  G=48  B=38  (status indicator)
 #
-# Copy this file onto the board as main.py (or import it) to run the demo.
+# 실행:
+#   보드에 main.py로 올리면 자동 실행되거나,
+#   >>> import polverine_demo; polverine_demo.main()
+#   기존 asyncio 앱에 통합:
+#   >>> led, aq, pm = polverine_demo.init_sensor()
+#   >>> asyncio.create_task(polverine_demo.run(led, aq, pm))
 
 import json
 import time
 import machine
+
+try:
+    import asyncio
+except ImportError:            # 구형 MicroPython 호환
+    import uasyncio as asyncio
 
 import bmv080
 import bme690
@@ -94,11 +104,16 @@ def make_bme690():
     return s
 
 
-def run():
+# --------------------------------------------------------------------------- #
+# 초기화                                                                        #
+# --------------------------------------------------------------------------- #
+def init_sensor():
+    """LED + 두 센서를 초기화하고 (led, bme690, bmv080)를 반환한다.
+    초기화 실패한 센서는 None으로 반환하고 LED로 상태를 표시한다."""
     led = StatusLed()
     print("# POLVERINE MicroPython demo  id={}".format(DEVICE_ID))
 
-    pm = aq = None
+    aq = pm = None
     try:
         aq = make_bme690()
     except Exception as e:
@@ -108,57 +123,83 @@ def run():
     except Exception as e:
         print("# BMV080 init failed:", e)
 
-    if pm is None or aq is None:
-        led.error()
-    else:
-        led.ok()
+    led.ok() if (aq is not None and pm is not None) else led.error()
+    return led, aq, pm
 
+
+# --------------------------------------------------------------------------- #
+# 모니터링 태스크                                                               #
+# --------------------------------------------------------------------------- #
+async def _monitor_bme690(led, aq):
+    # T / H  = BSEC heat-compensated (ambient). temp_offset 보정 시 정확.
+    # Traw/Hraw = 원시값(Traw는 자기발열로 ~10-15C 높음).
+    # ACC    = BSEC 정확도 0(보정중)~3. ACC==0이면 IAQ/CO2/VOC는 기본값(50/500/0.5).
     while True:
-        # --- BME690 / air quality ------------------------------------------ #
-        if aq is not None:
-            try:
-                out = aq.run()
-                if out:
-                    # T / H  = BSEC heat-compensated (ambient). Accurate only once
-                    #          temp_offset is calibrated (see make_bme690 below).
-                    # Traw/Hraw = raw sensor readings; Traw is self-heated (gas
-                    #          heater warms the die) so it reads ~10-15 C high.
-                    # ACC    = BSEC accuracy: 0=calibrating .. 3=calibrated. While
-                    #          ACC==0, IAQ/CO2/VOC stay at BSEC defaults (50/500/0.5).
-                    emit("bme690", {
-                        "R":    time.ticks_ms(),
-                        "T":    round(out.get("temperature", 0.0), 2),
-                        "H":    round(out.get("humidity", 0.0), 2),
-                        "Traw": round(out.get("raw_temperature", 0.0), 2),
-                        "Hraw": round(out.get("raw_humidity", 0.0), 2),
-                        "P":    round(out.get("pressure", 0.0) / 100.0, 2),  # Pa -> hPa
-                        "IAQ":  round(out.get("iaq", 0.0), 2),
-                        "ACC":  out.get("iaq_accuracy", 0),
-                        "CO2":  round(out.get("co2_equivalent", 0.0), 2),
-                        "VOC":  round(out.get("breath_voc_equivalent", 0.0), 3),
-                    })
-            except Exception as e:
-                print("# BME690 read error:", e)
-                led.error()
+        try:
+            out = aq.run()
+            if out:
+                emit("bme690", {
+                    "R":    time.ticks_ms(),
+                    "T":    round(out.get("temperature", 0.0), 2),
+                    "H":    round(out.get("humidity", 0.0), 2),
+                    "Traw": round(out.get("raw_temperature", 0.0), 2),
+                    "Hraw": round(out.get("raw_humidity", 0.0), 2),
+                    "P":    round(out.get("pressure", 0.0) / 100.0, 2),  # Pa -> hPa
+                    "IAQ":  round(out.get("iaq", 0.0), 2),
+                    "ACC":  out.get("iaq_accuracy", 0),
+                    "CO2":  round(out.get("co2_equivalent", 0.0), 2),
+                    "VOC":  round(out.get("breath_voc_equivalent", 0.0), 3),
+                })
+            await asyncio.sleep_ms(max(200, aq.next_call_ms()))
+        except Exception as e:
+            print("# BME690 read error:", e)
+            led.error()
+            await asyncio.sleep_ms(1000)
 
-        # --- BMV080 / particulate matter ----------------------------------- #
-        if pm is not None:
-            try:
-                d = pm.read()
-                if d:
-                    emit("bmv080", {
-                        "R":    round(d["runtime"], 1),
-                        "PM10": round(d["pm10"], 1),
-                        "PM25": round(d["pm2_5"], 1),
-                        "PM1":  round(d["pm1"], 1),
-                        "OBST": 1 if d["is_obstructed"] else 0,
-                    })
-            except Exception as e:
-                print("# BMV080 read error:", e)
-                led.error()
 
-        time.sleep_ms(200)
+async def _monitor_bmv080(led, pm):
+    while True:
+        try:
+            d = pm.read()
+            if d:
+                emit("bmv080", {
+                    "R":    round(d["runtime"], 1),
+                    "PM10": round(d["pm10"], 1),
+                    "PM25": round(d["pm2_5"], 1),
+                    "PM1":  round(d["pm1"], 1),
+                    "OBST": 1 if d["is_obstructed"] else 0,
+                })
+            await asyncio.sleep_ms(1000)
+        except Exception as e:
+            print("# BMV080 read error:", e)
+            led.error()
+            await asyncio.sleep_ms(1000)
+
+
+# --------------------------------------------------------------------------- #
+# 실행                                                                          #
+# --------------------------------------------------------------------------- #
+async def run(led, aq, pm):
+    """초기화된 센서를 asyncio 태스크로 동시에 모니터링한다."""
+    tasks = []
+    if aq is not None:
+        tasks.append(_monitor_bme690(led, aq))
+    if pm is not None:
+        tasks.append(_monitor_bmv080(led, pm))
+    if not tasks:
+        print("# 사용 가능한 센서가 없습니다.")
+        return
+    await asyncio.gather(*tasks)
+
+
+def main():
+    """초기화 후 asyncio 이벤트 루프에서 데모 실행(블로킹)."""
+    led, aq, pm = init_sensor()
+    try:
+        asyncio.run(run(led, aq, pm))
+    except KeyboardInterrupt:
+        print("# 중지됨")
 
 
 if __name__ == "__main__":
-    run()
+    main()
